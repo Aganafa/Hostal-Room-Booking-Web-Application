@@ -1,0 +1,2935 @@
+=================================================================
+File: C:\xampp\htdocs\hostal room booking web application\about.php
+=================================================================
+<?php require_once __DIR__ . '/includes/header.php'; ?>
+
+<div style="max-width: 800px; margin: 0 auto;">
+    <h1 style="text-align: center; margin-bottom: 30px; color: var(--primary-color);">About Us</h1>
+    
+    <div class="glass-panel" style="padding: 40px;">
+        <img src="https://images.unsplash.com/photo-1555854877-bab0e564b8d5?auto=format&fit=crop&q=80&w=800" alt="Hostel Building" style="width: 100%; border-radius: 12px; margin-bottom: 30px; height: 300px; object-fit: cover;">
+        
+        <h2 style="margin-bottom: 15px;">Our Mission</h2>
+        <p style="color: var(--text-muted); margin-bottom: 25px; font-size: 1.1rem;">
+            We aim to provide a comfortable, secure, and affordable living space for students and travelers. 
+            Our digital booking system eliminates the hassle of manual room hunting and gives you real-time access to our facilities.
+        </p>
+
+        <h2 style="margin-bottom: 15px;">Why Stay With Us?</h2>
+        <ul style="list-style-type: disc; padding-left: 20px; color: var(--text-muted); font-size: 1.1rem; line-height: 1.8;">
+            <li>Modern, clean, and fully-equipped rooms.</li>
+            <li>High-speed WiFi and 24/7 power backup.</li>
+            <li>Secure environment with CCTV surveillance.</li>
+            <li>Easy and transparent online booking process.</li>
+            <li>Friendly staff ready to assist you.</li>
+        </ul>
+    </div>
+</div>
+
+<?php require_once __DIR__ . '/includes/footer.php'; ?>
+
+
+
+=================================================================
+File: C:\xampp\htdocs\hostal room booking web application\booking.php
+=================================================================
+<?php
+require_once __DIR__ . '/includes/header.php';
+requireUserLogin();
+
+$error = '';
+$success = '';
+
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['room_id'])) {
+    $user_id = $_SESSION['user_id'];
+    $room_id = $_POST['room_id'];
+    $check_in = $_POST['check_in'];
+    $check_out = $_POST['check_out'];
+    $total_price = $_POST['total_price'];
+
+    if (empty($check_in) || empty($check_out) || $total_price <= 0) {
+        $error = 'Invalid booking details. Please select valid dates.';
+    } else {
+        // Simple check if dates are valid
+        if (strtotime($check_in) >= strtotime($check_out)) {
+            $error = 'Check-out date must be after check-in date.';
+        } else {
+            // Check if room is available in those dates (simple version: just check if it's currently marked as Available)
+            // A more complex system would check existing bookings overlapping dates
+            $stmt = $conn->prepare("SELECT availability_status FROM rooms WHERE id = ?");
+            $stmt->execute([$room_id]);
+            $room = $stmt->fetch();
+            
+            if ($room && $room['availability_status'] == 'Available') {
+                $conn->beginTransaction();
+                try {
+                    // Insert Booking
+                    $stmt = $conn->prepare("INSERT INTO bookings (user_id, room_id, check_in, check_out, total_price, booking_status, payment_status) VALUES (?, ?, ?, ?, ?, 'Pending', 'Pending')");
+                    $stmt->execute([$user_id, $room_id, $check_in, $check_out, $total_price]);
+                    $booking_id = $conn->lastInsertId();
+
+                    // Insert Payment Record (Pending)
+                    $payment_method = 'Online'; // Defaulting for now
+                    $stmt = $conn->prepare("INSERT INTO payments (booking_id, payment_method, amount, payment_status) VALUES (?, ?, ?, 'Pending')");
+                    $stmt->execute([$booking_id, $payment_method, $total_price]);
+
+                    $conn->commit();
+                    $success = 'Booking request submitted successfully! Please proceed to payment or wait for admin approval.';
+                } catch (Exception $e) {
+                    $conn->rollBack();
+                    $error = 'Failed to process booking. Please try again.';
+                }
+            } else {
+                $error = 'Room is not available.';
+            }
+        }
+    }
+} else {
+    header('Location: ' . BASE_URL . '/rooms.php');
+    exit();
+}
+?>
+
+<div class="container" style="max-width: 600px; margin-top: 50px;">
+    <div class="glass-panel" style="padding: 40px; text-align: center;">
+        <?php if ($error): ?>
+            <i class="fas fa-exclamation-circle" style="font-size: 4rem; color: var(--danger); margin-bottom: 20px;"></i>
+            <h2 style="color: var(--danger); margin-bottom: 20px;">Booking Failed</h2>
+            <p style="margin-bottom: 20px;"><?= htmlspecialchars($error) ?></p>
+            <a href="javascript:history.back()" class="btn btn-primary">Go Back</a>
+        <?php endif; ?>
+
+        <?php if ($success): ?>
+            <i class="fas fa-check-circle" style="font-size: 4rem; color: var(--success); margin-bottom: 20px;"></i>
+            <h2 style="color: var(--success); margin-bottom: 20px;">Booking Successful!</h2>
+            <p style="margin-bottom: 20px;"><?= htmlspecialchars($success) ?></p>
+            <p style="color: var(--text-muted); margin-bottom: 30px;">You can view and manage your bookings in your dashboard.</p>
+            <a href="<?= BASE_URL ?>/user/booking-history.php" class="btn btn-primary">View My Bookings</a>
+            <a href="<?= BASE_URL ?>/index.php" class="btn btn-secondary">Return Home</a>
+        <?php endif; ?>
+    </div>
+</div>
+
+<?php require_once __DIR__ . '/includes/footer.php'; ?>
+
+
+
+=================================================================
+File: C:\xampp\htdocs\hostal room booking web application\check_db.php
+=================================================================
+<?php
+require_once __DIR__ . '/config/database.php';
+$stmt = $conn->query("SELECT id, title, image, room_number FROM rooms ORDER BY id ASC");
+$rooms = $stmt->fetchAll(PDO::FETCH_ASSOC);
+echo json_encode($rooms, JSON_PRETTY_PRINT);
+?>
+
+
+
+=================================================================
+File: C:\xampp\htdocs\hostal room booking web application\contact.php
+=================================================================
+<?php
+require_once __DIR__ . '/includes/header.php';
+
+$success = '';
+$error = '';
+
+if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+    $name = trim($_POST['name']);
+    $email = trim($_POST['email']);
+    $subject = trim($_POST['subject']);
+    $message = trim($_POST['message']);
+
+    if (empty($name) || empty($email) || empty($subject) || empty($message)) {
+        $error = 'All fields are required.';
+    } else {
+        $stmt = $conn->prepare("INSERT INTO contact_messages (name, email, subject, message) VALUES (?, ?, ?, ?)");
+        if ($stmt->execute([$name, $email, $subject, $message])) {
+            $success = 'Thank you for contacting us. We will get back to you shortly!';
+        } else {
+            $error = 'Failed to send message. Please try again.';
+        }
+    }
+}
+?>
+
+<div style="max-width: 800px; margin: 0 auto;">
+    <h1 style="text-align: center; margin-bottom: 30px; color: var(--primary-color);">Contact Us</h1>
+    
+    <div class="glass-panel" style="padding: 40px;">
+        <?php if ($success): ?>
+            <div class="alert alert-success"><?= $success ?></div>
+        <?php endif; ?>
+        <?php if ($error): ?>
+            <div class="alert alert-danger"><?= htmlspecialchars($error) ?></div>
+        <?php endif; ?>
+
+        <form method="POST" action="">
+            <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 20px;">
+                <div class="form-group">
+                    <label for="name">Your Name</label>
+                    <input type="text" id="name" name="name" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label for="email">Your Email</label>
+                    <input type="email" id="email" name="email" class="form-control" required>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="subject">Subject</label>
+                <input type="text" id="subject" name="subject" class="form-control" required>
+            </div>
+            <div class="form-group">
+                <label for="message">Message</label>
+                <textarea id="message" name="message" class="form-control" rows="6" required></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary" style="width: 100%;">Send Message</button>
+        </form>
+    </div>
+</div>
+
+<?php require_once __DIR__ . '/includes/footer.php'; ?>
+
+
+
+=================================================================
+File: C:\xampp\htdocs\hostal room booking web application\faq.php
+=================================================================
+<?php require_once __DIR__ . '/includes/header.php'; ?>
+
+<div style="max-width: 800px; margin: 0 auto;">
+    <h1 style="text-align: center; margin-bottom: 30px; color: var(--primary-color);">Frequently Asked Questions</h1>
+    
+    <div class="glass-panel" style="padding: 40px;">
+        <div style="margin-bottom: 25px; border-bottom: 1px solid var(--glass-border); padding-bottom: 15px;">
+            <h3 style="color: var(--text-main); margin-bottom: 10px;">1. How do I book a room?</h3>
+            <p style="color: var(--text-muted);">First, register for an account. Once logged in, browse our available rooms, click on 'Details', select your check-in and check-out dates, and proceed to book.</p>
+        </div>
+
+        <div style="margin-bottom: 25px; border-bottom: 1px solid var(--glass-border); padding-bottom: 15px;">
+            <h3 style="color: var(--text-main); margin-bottom: 10px;">2. What payment methods are accepted?</h3>
+            <p style="color: var(--text-muted);">We accept various payment methods. You can view payment details during the checkout process.</p>
+        </div>
+
+        <div style="margin-bottom: 25px; border-bottom: 1px solid var(--glass-border); padding-bottom: 15px;">
+            <h3 style="color: var(--text-main); margin-bottom: 10px;">3. Can I cancel my booking?</h3>
+            <p style="color: var(--text-muted);">Yes, you can cancel your booking from your dashboard under 'Booking History' if it is still pending or according to our cancellation policy.</p>
+        </div>
+
+        <div style="margin-bottom: 25px; border-bottom: 1px solid var(--glass-border); padding-bottom: 15px;">
+            <h3 style="color: var(--text-main); margin-bottom: 10px;">4. Are visitors allowed?</h3>
+            <p style="color: var(--text-muted);">Visitors are allowed in common areas during visiting hours (8:00 AM - 8:00 PM). Overnight stays for visitors are strictly prohibited.</p>
+        </div>
+
+        <div>
+            <h3 style="color: var(--text-main); margin-bottom: 10px;">5. Is WiFi available?</h3>
+            <p style="color: var(--text-muted);">Yes, high-speed WiFi is available in all rooms and common areas at no extra cost.</p>
+        </div>
+    </div>
+</div>
+
+<?php require_once __DIR__ . '/includes/footer.php'; ?>
+
+
+
+=================================================================
+File: C:\xampp\htdocs\hostal room booking web application\fix_admin.php
+=================================================================
+<?php
+require_once __DIR__ . '/config/database.php';
+$new_hash = password_hash('password123', PASSWORD_DEFAULT);
+$conn->query("UPDATE admins SET password = '$new_hash' WHERE username = 'admin'");
+echo "Admin password has been reset to: password123";
+?>
+
+
+
+=================================================================
+File: C:\xampp\htdocs\hostal room booking web application\forgot-password.php
+=================================================================
+<?php
+require_once __DIR__ . '/includes/header.php';
+
+if (isUserLoggedIn()) {
+    header('Location: ' . BASE_URL . '/user/dashboard.php');
+    exit();
+}
+
+$error = '';
+$success = '';
+
+if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+    $email = trim($_POST['email']);
+    $new_password = $_POST['new_password'];
+
+    if (empty($email) || empty($new_password)) {
+        $error = 'Please provide both email and a new password.';
+    } else {
+        $stmt = $conn->prepare("SELECT id FROM users WHERE email = ?");
+        $stmt->execute([$email]);
+        if ($stmt->fetch()) {
+            $hashed_password = password_hash($new_password, PASSWORD_DEFAULT);
+            $update = $conn->prepare("UPDATE users SET password = ? WHERE email = ?");
+            if ($update->execute([$hashed_password, $email])) {
+                $success = 'Password reset successfully. You can now <a href="'.BASE_URL.'/login.php">login</a> with your new password.';
+            } else {
+                $error = 'Failed to reset password. Please try again.';
+            }
+        } else {
+            $error = 'Email address not found.';
+        }
+    }
+}
+?>
+
+<div class="auth-wrapper">
+    <div class="glass-panel auth-card">
+        <h2>Reset Password</h2>
+        <p style="text-align: center; margin-bottom: 20px; color: var(--text-muted);">Enter your registered email and a new password.</p>
+        <?php if ($error): ?>
+            <div class="alert alert-danger"><?= htmlspecialchars($error) ?></div>
+        <?php endif; ?>
+        <?php if ($success): ?>
+            <div class="alert alert-success"><?= $success ?></div>
+        <?php else: ?>
+            <form method="POST" action="">
+                <div class="form-group">
+                    <label for="email">Registered Email</label>
+                    <input type="email" id="email" name="email" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label for="new_password">New Password</label>
+                    <input type="password" id="new_password" name="new_password" class="form-control" required>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%;">Reset Password</button>
+            </form>
+        <?php endif; ?>
+        <p style="text-align: center; margin-top: 20px;">
+            <a href="<?= BASE_URL ?>/login.php">Back to Login</a>
+        </p>
+    </div>
+</div>
+
+<?php require_once __DIR__ . '/includes/footer.php'; ?>
+
+
+
+=================================================================
+File: C:\xampp\htdocs\hostal room booking web application\index.php
+=================================================================
+<?php
+require_once __DIR__ . '/includes/header.php';
+
+// Fetch a few available rooms for the homepage
+$stmt = $conn->query("SELECT * FROM rooms WHERE availability_status = 'Available' LIMIT 3");
+$featured_rooms = $stmt->fetchAll();
+?>
+
+<!-- Hero Section -->
+<section style="text-align: center; padding: 60px 20px; background: rgba(79, 70, 229, 0.05); border-radius: 16px; margin-bottom: 40px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+    <h1 style="font-size: 2.5rem; color: var(--primary-color); margin-bottom: 20px;">Find Your Perfect Stay</h1>
+    <p style="font-size: 1.2rem; color: var(--text-muted); margin-bottom: 30px; max-width: 600px; margin-left: auto; margin-right: auto;">Book comfortable, affordable, and secure hostel rooms online in just a few clicks.</p>
+    <a href="<?= BASE_URL ?>/rooms.php" class="btn btn-primary" style="font-size: 1.1rem; padding: 15px 30px;">Explore Rooms</a>
+</section>
+
+<!-- Features Section -->
+<section style="margin-bottom: 60px;">
+    <h2 style="text-align: center; margin-bottom: 40px;">Why Choose Us?</h2>
+    <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); text-align: center;">
+        <div class="glass-panel" style="padding: 30px;">
+            <i class="fas fa-bolt" style="font-size: 2.5rem; color: var(--warning); margin-bottom: 20px;"></i>
+            <h3>Fast Booking</h3>
+            <p style="color: var(--text-muted); margin-top: 10px;">Instantly check availability and book your room without any hassle.</p>
+        </div>
+        <div class="glass-panel" style="padding: 30px;">
+            <i class="fas fa-shield-alt" style="font-size: 2.5rem; color: var(--success); margin-bottom: 20px;"></i>
+            <h3>Secure Payments</h3>
+            <p style="color: var(--text-muted); margin-top: 10px;">Your transactions are secure with our robust payment tracking system.</p>
+        </div>
+        <div class="glass-panel" style="padding: 30px;">
+            <i class="fas fa-wifi" style="font-size: 2.5rem; color: var(--primary-color); margin-bottom: 20px;"></i>
+            <h3>Great Facilities</h3>
+            <p style="color: var(--text-muted); margin-top: 10px;">Enjoy free WiFi, clean spaces, and much more during your stay.</p>
+        </div>
+    </div>
+</section>
+
+<!-- Featured Rooms Section -->
+<section style="margin-bottom: 40px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+        <h2>Featured Rooms</h2>
+        <a href="<?= BASE_URL ?>/rooms.php" class="btn btn-secondary">View All</a>
+    </div>
+    <div class="grid">
+        <?php foreach ($featured_rooms as $room): ?>
+            <div class="glass-panel room-card">
+                <div class="room-img-container">
+                    <img src="<?= BASE_URL ?>/uploads/<?= htmlspecialchars($room['image']) ?>" alt="<?= htmlspecialchars($room['title']) ?>" onerror="this.src='https://via.placeholder.com/400x200?text=Room+Image'">
+                </div>
+                <div class="room-details">
+                    <h3 class="room-title"><?= htmlspecialchars($room['title']) ?></h3>
+                    <p class="room-price">Rs. <?= number_format($room['price'], 2) ?> <span style="font-size: 0.9rem; color: var(--text-muted); font-weight: normal;">/ night</span></p>
+                    <p style="color: var(--text-muted); margin-bottom: 15px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">
+                        <?= htmlspecialchars($room['description']) ?>
+                    </p>
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span class="badge badge-approved"><i class="fas fa-user"></i> <?= $room['capacity'] ?> Person(s)</span>
+                        <a href="<?= BASE_URL ?>/room-details.php?id=<?= $room['id'] ?>" class="btn btn-primary" style="padding: 8px 15px;">Details</a>
+                    </div>
+                </div>
+            </div>
+        <?php endforeach; ?>
+        <?php if (empty($featured_rooms)): ?>
+            <p>No featured rooms available at the moment.</p>
+        <?php endif; ?>
+    </div>
+</section>
+
+<?php require_once __DIR__ . '/includes/footer.php'; ?>
+
+
+
+=================================================================
+File: C:\xampp\htdocs\hostal room booking web application\login.php
+=================================================================
+<?php
+require_once __DIR__ . '/includes/header.php';
+
+if (isUserLoggedIn()) {
+    header('Location: ' . BASE_URL . '/user/dashboard.php');
+    exit();
+}
+
+$error = '';
+
+if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+    $email = trim($_POST['email']);
+    $password = $_POST['password'];
+
+    if (empty($email) || empty($password)) {
+        $error = 'Please enter both email and password.';
+    } else {
+        $stmt = $conn->prepare("SELECT * FROM users WHERE email = ?");
+        $stmt->execute([$email]);
+        $user = $stmt->fetch();
+
+        if ($user && password_verify($password, $user['password'])) {
+            $_SESSION['user_id'] = $user['id'];
+            $_SESSION['user_name'] = $user['name'];
+            header('Location: ' . BASE_URL . '/user/dashboard.php');
+            exit();
+        } else {
+            $error = 'Invalid email or password.';
+        }
+    }
+}
+?>
+
+<div class="auth-wrapper">
+    <div class="glass-panel auth-card">
+        <h2>User Login</h2>
+        <?php if ($error): ?>
+            <div class="alert alert-danger"><?= htmlspecialchars($error) ?></div>
+        <?php endif; ?>
+        <form method="POST" action="">
+            <div class="form-group">
+                <label for="email">Email</label>
+                <input type="email" id="email" name="email" class="form-control" required>
+            </div>
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" class="form-control" required>
+            </div>
+            <button type="submit" class="btn btn-primary" style="width: 100%;">Login</button>
+        </form>
+        <p style="text-align: center; margin-top: 20px;">
+            Don't have an account? <a href="<?= BASE_URL ?>/register.php">Register here</a>
+        </p>
+        <p style="text-align: center; margin-top: 10px;">
+            <a href="<?= BASE_URL ?>/forgot-password.php">Forgot Password?</a>
+        </p>
+        <p style="text-align: center; margin-top: 10px;">
+            <a href="<?= BASE_URL ?>/admin/login.php" style="font-size: 0.9em; color: var(--text-muted);">Admin Login</a>
+        </p>
+    </div>
+</div>
+
+<?php require_once __DIR__ . '/includes/footer.php'; ?>
+
+
+
+=================================================================
+File: C:\xampp\htdocs\hostal room booking web application\logout.php
+=================================================================
+<?php
+session_start();
+require_once __DIR__ . '/config/database.php';
+session_unset();
+session_destroy();
+header('Location: ' . BASE_URL . '/login.php');
+exit();
+?>
+
+
+
+=================================================================
+File: C:\xampp\htdocs\hostal room booking web application\register.php
+=================================================================
+<?php
+require_once __DIR__ . '/includes/header.php';
+
+if (isUserLoggedIn()) {
+    header('Location: ' . BASE_URL . '/user/dashboard.php');
+    exit();
+}
+
+$error = '';
+$success = '';
+
+if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+    $name = trim($_POST['name']);
+    $email = trim($_POST['email']);
+    $phone = trim($_POST['phone']);
+    $password = $_POST['password'];
+    $confirm_password = $_POST['confirm_password'];
+
+    if (empty($name) || empty($email) || empty($phone) || empty($password) || empty($confirm_password)) {
+        $error = 'All fields are required.';
+    } elseif ($password !== $confirm_password) {
+        $error = 'Passwords do not match.';
+    } else {
+        // Check if email already exists
+        $stmt = $conn->prepare("SELECT id FROM users WHERE email = ?");
+        $stmt->execute([$email]);
+        if ($stmt->fetch()) {
+            $error = 'Email is already registered.';
+        } else {
+            $hashed_password = password_hash($password, PASSWORD_DEFAULT);
+            $stmt = $conn->prepare("INSERT INTO users (name, email, phone, password) VALUES (?, ?, ?, ?)");
+            if ($stmt->execute([$name, $email, $phone, $hashed_password])) {
+                $success = 'Registration successful! You can now <a href="'.BASE_URL.'/login.php">login</a>.';
+            } else {
+                $error = 'Registration failed. Please try again.';
+            }
+        }
+    }
+}
+?>
+
+<div class="auth-wrapper">
+    <div class="glass-panel auth-card" style="max-width: 500px;">
+        <h2>Create an Account</h2>
+        <?php if ($error): ?>
+            <div class="alert alert-danger"><?= htmlspecialchars($error) ?></div>
+        <?php endif; ?>
+        <?php if ($success): ?>
+            <div class="alert alert-success"><?= $success ?></div>
+        <?php else: ?>
+            <form method="POST" action="">
+                <div class="form-group">
+                    <label for="name">Full Name</label>
+                    <input type="text" id="name" name="name" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label for="email">Email Address</label>
+                    <input type="email" id="email" name="email" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label for="phone">Phone Number</label>
+                    <input type="text" id="phone" name="phone" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label for="confirm_password">Confirm Password</label>
+                    <input type="password" id="confirm_password" name="confirm_password" class="form-control" required>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%;">Register</button>
+            </form>
+        <?php endif; ?>
+        <p style="text-align: center; margin-top: 20px;">
+            Already have an account? <a href="<?= BASE_URL ?>/login.php">Login here</a>
+        </p>
+    </div>
+</div>
+
+<?php require_once __DIR__ . '/includes/footer.php'; ?>
+
+
+
+=================================================================
+File: C:\xampp\htdocs\hostal room booking web application\room-details.php
+=================================================================
+<?php
+require_once __DIR__ . '/includes/header.php';
+
+if (!isset($_GET['id'])) {
+    header('Location: ' . BASE_URL . '/rooms.php');
+    exit();
+}
+
+$room_id = $_GET['id'];
+$stmt = $conn->prepare("SELECT * FROM rooms WHERE id = ?");
+$stmt->execute([$room_id]);
+$room = $stmt->fetch();
+
+if (!$room) {
+    echo "<div class='container'><div class='alert alert-danger'>Room not found.</div></div>";
+    require_once __DIR__ . '/includes/footer.php';
+    exit();
+}
+
+$facilities = explode(',', $room['facilities']);
+?>
+
+<div class="container">
+    <div class="grid" style="grid-template-columns: 2fr 1fr; gap: 40px; margin-top: 20px;">
+        <!-- Left Column: Details -->
+        <div>
+            <div class="glass-panel" style="padding: 20px; margin-bottom: 30px;">
+                <img src="<?= BASE_URL ?>/uploads/<?= htmlspecialchars($room['image']) ?>" alt="<?= htmlspecialchars($room['title']) ?>" style="width: 100%; border-radius: 12px; height: 400px; object-fit: cover;" onerror="this.src='https://via.placeholder.com/800x400?text=Room+Image'">
+            </div>
+            
+            <h1 style="color: var(--primary-color); margin-bottom: 10px;"><?= htmlspecialchars($room['title']) ?></h1>
+            <p style="color: var(--text-muted); font-size: 1.1rem; margin-bottom: 20px;">
+                <span class="badge badge-pending" style="background: rgba(79, 70, 229, 0.1); color: var(--primary-color); font-size: 1rem;"><i class="fas fa-hashtag"></i> Room No: <?= htmlspecialchars($room['room_number']) ?></span>
+                <span class="badge badge-pending" style="background: rgba(16, 185, 129, 0.1); color: var(--success); font-size: 1rem; margin-left: 10px;"><i class="fas fa-bed"></i> Type: <?= htmlspecialchars($room['type']) ?></span>
+            </p>
+
+            <h3 style="margin-bottom: 15px;">Description</h3>
+            <p style="color: var(--text-muted); line-height: 1.8; margin-bottom: 30px;"><?= nl2br(htmlspecialchars($room['description'])) ?></p>
+
+            <h3 style="margin-bottom: 15px;">Facilities</h3>
+            <ul style="display: flex; flex-wrap: wrap; gap: 10px;">
+                <?php foreach ($facilities as $facility): ?>
+                    <li style="background: rgba(255,255,255,0.8); padding: 8px 15px; border-radius: 20px; border: 1px solid var(--glass-border);"><i class="fas fa-check" style="color: var(--success); margin-right: 5px;"></i> <?= htmlspecialchars(trim($facility)) ?></li>
+                <?php endforeach; ?>
+            </ul>
+        </div>
+
+        <!-- Right Column: Booking Form -->
+        <div>
+            <div class="glass-panel" style="padding: 30px; position: sticky; top: 100px;">
+                <h2 style="margin-bottom: 20px;">Book this Room</h2>
+                <div style="font-size: 2rem; font-weight: bold; color: var(--primary-color); margin-bottom: 20px;" id="room_price" data-price="<?= $room['price'] ?>">
+                    Rs. <?= number_format($room['price'], 2) ?> <span style="font-size: 1rem; color: var(--text-muted); font-weight: normal;">/ night</span>
+                </div>
+
+                <?php if ($room['availability_status'] !== 'Available'): ?>
+                    <div class="alert alert-danger" style="text-align: center;">This room is currently unavailable for booking.</div>
+                <?php else: ?>
+                    <?php if (!isUserLoggedIn()): ?>
+                        <div class="alert alert-warning" style="text-align: center; background: #FEF3C7; color: #92400E; border: 1px solid #FCD34D;">
+                            Please <a href="<?= BASE_URL ?>/login.php" style="text-decoration: underline;">login</a> to book this room.
+                        </div>
+                    <?php else: ?>
+                        <form method="POST" action="<?= BASE_URL ?>/booking.php">
+                            <input type="hidden" name="room_id" value="<?= $room['id'] ?>">
+                            <div class="form-group">
+                                <label for="check_in">Check-in Date</label>
+                                <input type="date" id="check_in" name="check_in" class="form-control" required min="<?= date('Y-m-d') ?>">
+                            </div>
+                            <div class="form-group">
+                                <label for="check_out">Check-out Date</label>
+                                <input type="date" id="check_out" name="check_out" class="form-control" required min="<?= date('Y-m-d', strtotime('+1 day')) ?>">
+                            </div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px; margin-bottom: 20px; padding-top: 15px; border-top: 1px solid var(--glass-border);">
+                                <span style="font-weight: 600;">Total Price:</span>
+                                <span id="total_price_display" style="font-weight: bold; font-size: 1.5rem; color: var(--success);">$0.00</span>
+                                <input type="hidden" id="total_price" name="total_price" value="0">
+                            </div>
+                            <button type="submit" class="btn btn-primary" style="width: 100%; font-size: 1.1rem; padding: 12px;">Proceed to Book</button>
+                        </form>
+                    <?php endif; ?>
+                <?php endif; ?>
+            </div>
+        </div>
+    </div>
+</div>
+
+<?php require_once __DIR__ . '/includes/footer.php'; ?>
+
+
+
+=================================================================
+File: C:\xampp\htdocs\hostal room booking web application\rooms.php
+=================================================================
+<?php
+require_once __DIR__ . '/includes/header.php';
+
+// Fetch all rooms
+$stmt = $conn->query("SELECT * FROM rooms ORDER BY id DESC");
+$rooms = $stmt->fetchAll();
+?>
+
+<div class="container">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+        <h1 style="color: var(--primary-color);">Our Rooms</h1>
+        <div style="width: 300px;">
+            <input type="text" id="search_rooms" class="form-control" placeholder="Search rooms...">
+        </div>
+    </div>
+
+    <div class="grid" id="rooms_container">
+        <?php foreach ($rooms as $room): ?>
+            <div class="glass-panel room-card">
+                <div class="room-img-container">
+                    <img src="<?= BASE_URL ?>/uploads/<?= htmlspecialchars($room['image']) ?>" alt="<?= htmlspecialchars($room['title']) ?>" onerror="this.src='https://via.placeholder.com/400x200?text=Room+Image'">
+                    <?php if ($room['availability_status'] === 'Available'): ?>
+                        <span style="position: absolute; top: 10px; right: 10px; background: var(--success); color: white; padding: 5px 10px; border-radius: 20px; font-size: 0.8rem; font-weight: bold;">Available</span>
+                    <?php else: ?>
+                        <span style="position: absolute; top: 10px; right: 10px; background: var(--danger); color: white; padding: 5px 10px; border-radius: 20px; font-size: 0.8rem; font-weight: bold;">Unavailable</span>
+                    <?php endif; ?>
+                </div>
+                <div class="room-details">
+                    <h3 class="room-title"><?= htmlspecialchars($room['title']) ?></h3>
+                    <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 10px;"><i class="fas fa-bed"></i> Type: <?= htmlspecialchars($room['type']) ?> | Room No: <?= htmlspecialchars($room['room_number']) ?></p>
+                    <p class="room-price">Rs. <?= number_format($room['price'], 2) ?> <span style="font-size: 0.9rem; color: var(--text-muted); font-weight: normal;">/ night</span></p>
+                    <p style="color: var(--text-muted); margin-bottom: 15px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">
+                        <?= htmlspecialchars($room['description']) ?>
+                    </p>
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span class="badge badge-pending" style="background: rgba(79, 70, 229, 0.1); color: var(--primary-color);"><i class="fas fa-users"></i> <?= $room['capacity'] ?> Person(s)</span>
+                        <a href="<?= BASE_URL ?>/room-details.php?id=<?= $room['id'] ?>" class="btn btn-primary" style="padding: 8px 15px;">Details</a>
+                    </div>
+                </div>
+            </div>
+        <?php endforeach; ?>
+        <?php if (empty($rooms)): ?>
+            <p>No rooms available at the moment.</p>
+        <?php endif; ?>
+    </div>
+</div>
+
+<?php require_once __DIR__ . '/includes/footer.php'; ?>
+
+
+
+=================================================================
+File: C:\xampp\htdocs\hostal room booking web application\admin\add_room.php
+=================================================================
+<?php
+require_once __DIR__ . '/includes/admin_header.php';
+
+$success = '';
+$error = '';
+
+// Create uploads directory if it doesn't exist
+$upload_dir = __DIR__ . '/../uploads/';
+if (!is_dir($upload_dir)) {
+    mkdir($upload_dir, 0755, true);
+}
+
+if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+    $room_number = trim($_POST['room_number']);
+    $title = trim($_POST['title']);
+    $type = trim($_POST['type']);
+    $description = trim($_POST['description']);
+    $price = $_POST['price'];
+    $capacity = $_POST['capacity'];
+    $facilities = trim($_POST['facilities']);
+    $availability_status = $_POST['availability_status'];
+    $image_name = 'default_room.jpg';
+
+    if (empty($room_number) || empty($title) || empty($price) || empty($capacity)) {
+        $error = "Room Number, Title, Price, and Capacity are required.";
+    } else {
+        // Image Upload
+        if (isset($_FILES['image']) && $_FILES['image']['error'] == 0) {
+            $allowed_ext = ['jpg', 'jpeg', 'png', 'webp'];
+            $file_name = $_FILES['image']['name'];
+            $file_ext = strtolower(pathinfo($file_name, PATHINFO_EXTENSION));
+            
+            if (in_array($file_ext, $allowed_ext)) {
+                $new_name = uniqid('room_') . '.' . $file_ext;
+                if (move_uploaded_file($_FILES['image']['tmp_name'], $upload_dir . $new_name)) {
+                    $image_name = $new_name;
+                } else {
+                    $error = "Failed to upload image.";
+                }
+            } else {
+                $error = "Invalid image format. Allowed: jpg, jpeg, png, webp";
+            }
+        }
+
+        if (empty($error)) {
+            try {
+                $stmt = $conn->prepare("INSERT INTO rooms (room_number, title, type, description, price, capacity, image, availability_status, facilities) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                $stmt->execute([$room_number, $title, $type, $description, $price, $capacity, $image_name, $availability_status, $facilities]);
+                $success = "Room added successfully.";
+            } catch (PDOException $e) {
+                if ($e->errorInfo[1] == 1062) {
+                    $error = "Room number already exists.";
+                } else {
+                    $error = "Database error: " . $e->getMessage();
+                }
+            }
+        }
+    }
+}
+?>
+
+<div style="margin-bottom: 20px;">
+    <h2><a href="<?= BASE_URL ?>/admin/manage_rooms.php" style="color: var(--text-muted);"><i class="fas fa-arrow-left"></i> Manage Rooms</a> / Add Room</h2>
+</div>
+
+<div class="glass-panel" style="padding: 30px; background: white; max-width: 800px;">
+    <?php if ($success): ?>
+        <div class="alert alert-success"><?= $success ?></div>
+    <?php endif; ?>
+    <?php if ($error): ?>
+        <div class="alert alert-danger"><?= htmlspecialchars($error) ?></div>
+    <?php endif; ?>
+
+    <form method="POST" action="" enctype="multipart/form-data">
+        <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 20px;">
+            <div class="form-group">
+                <label for="room_number">Room Number *</label>
+                <input type="text" id="room_number" name="room_number" class="form-control" required>
+            </div>
+            <div class="form-group">
+                <label for="title">Title *</label>
+                <input type="text" id="title" name="title" class="form-control" required>
+            </div>
+            <div class="form-group">
+                <label for="type">Room Type *</label>
+                <select id="type" name="type" class="form-control" required>
+                    <option value="Single">Single</option>
+                    <option value="Double">Double</option>
+                    <option value="Dormitory">Dormitory</option>
+                    <option value="Suite">Suite</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="price">Price (per night) *</label>
+                <input type="number" id="price" name="price" class="form-control" step="0.01" required>
+            </div>
+            <div class="form-group">
+                <label for="capacity">Capacity (Persons) *</label>
+                <input type="number" id="capacity" name="capacity" class="form-control" required>
+            </div>
+            <div class="form-group">
+                <label for="availability_status">Availability Status</label>
+                <select id="availability_status" name="availability_status" class="form-control">
+                    <option value="Available">Available</option>
+                    <option value="Unavailable">Unavailable</option>
+                </select>
+            </div>
+        </div>
+        <div class="form-group">
+            <label for="facilities">Facilities (comma separated, e.g., WiFi, AC, Balcony)</label>
+            <input type="text" id="facilities" name="facilities" class="form-control">
+        </div>
+        <div class="form-group">
+            <label for="description">Description</label>
+            <textarea id="description" name="description" class="form-control" rows="5"></textarea>
+        </div>
+        <div class="form-group">
+            <label for="image">Room Image</label>
+            <input type="file" id="image" name="image" class="form-control" accept="image/*">
+        </div>
+        <button type="submit" class="btn btn-primary">Save Room</button>
+    </form>
+</div>
+
+<?php require_once __DIR__ . '/includes/admin_footer.php'; ?>
+
+
+
+=================================================================
+File: C:\xampp\htdocs\hostal room booking web application\admin\contact_messages.php
+=================================================================
+<?php
+require_once __DIR__ . '/includes/admin_header.php';
+
+if (isset($_GET['delete_id'])) {
+    $delete_id = $_GET['delete_id'];
+    $stmt = $conn->prepare("DELETE FROM contact_messages WHERE id = ?");
+    if ($stmt->execute([$delete_id])) {
+        $success = "Message deleted successfully.";
+    }
+}
+
+$messages = $conn->query("SELECT * FROM contact_messages ORDER BY created_at DESC")->fetchAll();
+?>
+
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    <h2>Contact Messages</h2>
+</div>
+
+<?php if (isset($success)): ?>
+    <div class="alert alert-success"><?= $success ?></div>
+<?php endif; ?>
+
+<div class="glass-panel" style="padding: 20px; background: white;">
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Subject</th>
+                    <th>Message</th>
+                    <th>Date</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($messages as $msg): ?>
+                    <tr>
+                        <td>#<?= $msg['id'] ?></td>
+                        <td><?= htmlspecialchars($msg['name']) ?></td>
+                        <td><a href="mailto:<?= htmlspecialchars($msg['email']) ?>"><?= htmlspecialchars($msg['email']) ?></a></td>
+                        <td><strong><?= htmlspecialchars($msg['subject']) ?></strong></td>
+                        <td><div style="max-height: 100px; overflow-y: auto; max-width: 300px;"><?= nl2br(htmlspecialchars($msg['message'])) ?></div></td>
+                        <td><?= date('M d, Y H:i', strtotime($msg['created_at'])) ?></td>
+                        <td>
+                            <a href="?delete_id=<?= $msg['id'] ?>" class="btn btn-danger btn-delete" style="padding: 4px 8px; font-size: 0.8rem; border-radius: 4px;" onclick="return confirm('Delete this message?');">Delete</a>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                <?php if (empty($messages)): ?>
+                    <tr>
+                        <td colspan="7" style="text-align: center;">No messages found.</td>
+                    </tr>
+                <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<?php require_once __DIR__ . '/includes/admin_footer.php'; ?>
+
+
+
+=================================================================
+File: C:\xampp\htdocs\hostal room booking web application\admin\dashboard.php
+=================================================================
+<?php
+require_once __DIR__ . '/includes/admin_header.php';
+
+// Fetch Statistics
+$total_rooms = $conn->query("SELECT count(*) FROM rooms")->fetchColumn();
+$total_users = $conn->query("SELECT count(*) FROM users")->fetchColumn();
+$total_bookings = $conn->query("SELECT count(*) FROM bookings")->fetchColumn();
+$total_revenue = $conn->query("SELECT sum(amount) FROM payments WHERE payment_status = 'Paid'")->fetchColumn() ?: 0;
+
+$recent_bookings = $conn->query("SELECT b.*, u.name as user_name, r.room_number FROM bookings b 
+                                JOIN users u ON b.user_id = u.id 
+                                JOIN rooms r ON b.room_id = r.id 
+                                ORDER BY b.created_at DESC LIMIT 5")->fetchAll();
+?>
+
+<div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 30px;">
+    <div class="glass-panel" style="padding: 20px; background: white;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <h3 style="color: var(--text-muted); font-size: 0.9rem; text-transform: uppercase;">Total Rooms</h3>
+                <p style="font-size: 2rem; font-weight: bold; color: var(--text-main); margin-top: 5px;"><?= $total_rooms ?></p>
+            </div>
+            <div style="background: rgba(79, 70, 229, 0.1); padding: 15px; border-radius: 50%;">
+                <i class="fas fa-door-open" style="font-size: 1.5rem; color: var(--primary-color);"></i>
+            </div>
+        </div>
+    </div>
+    
+    <div class="glass-panel" style="padding: 20px; background: white;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <h3 style="color: var(--text-muted); font-size: 0.9rem; text-transform: uppercase;">Total Users</h3>
+                <p style="font-size: 2rem; font-weight: bold; color: var(--text-main); margin-top: 5px;"><?= $total_users ?></p>
+            </div>
+            <div style="background: rgba(16, 185, 129, 0.1); padding: 15px; border-radius: 50%;">
+                <i class="fas fa-users" style="font-size: 1.5rem; color: var(--success);"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="glass-panel" style="padding: 20px; background: white;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <h3 style="color: var(--text-muted); font-size: 0.9rem; text-transform: uppercase;">Total Bookings</h3>
+                <p style="font-size: 2rem; font-weight: bold; color: var(--text-main); margin-top: 5px;"><?= $total_bookings ?></p>
+            </div>
+            <div style="background: rgba(245, 158, 11, 0.1); padding: 15px; border-radius: 50%;">
+                <i class="fas fa-calendar-check" style="font-size: 1.5rem; color: var(--warning);"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="glass-panel" style="padding: 20px; background: white;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <h3 style="color: var(--text-muted); font-size: 0.9rem; text-transform: uppercase;">Revenue</h3>
+                <p style="font-size: 2rem; font-weight: bold; color: var(--text-main); margin-top: 5px;">Rs. <?= number_format($total_revenue, 2) ?></p>
+            </div>
+            <div style="background: rgba(239, 68, 68, 0.1); padding: 15px; border-radius: 50%;">
+                <i class="fas fa-money-bill-wave" style="font-size: 1.5rem; color: var(--danger);"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="glass-panel" style="padding: 20px; background: white;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h3 style="margin: 0;">Recent Bookings</h3>
+        <a href="<?= BASE_URL ?>/admin/manage_bookings.php" class="btn btn-secondary" style="padding: 5px 15px; font-size: 0.9rem;">View All</a>
+    </div>
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>User</th>
+                    <th>Room</th>
+                    <th>Check-in</th>
+                    <th>Check-out</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($recent_bookings as $booking): ?>
+                    <tr>
+                        <td>#<?= $booking['id'] ?></td>
+                        <td><?= htmlspecialchars($booking['user_name']) ?></td>
+                        <td><?= htmlspecialchars($booking['room_number']) ?></td>
+                        <td><?= date('M d, Y', strtotime($booking['check_in'])) ?></td>
+                        <td><?= date('M d, Y', strtotime($booking['check_out'])) ?></td>
+                        <td>
+                            <?php 
+                                $statusClass = 'badge-pending';
+                                if ($booking['booking_status'] == 'Approved') $statusClass = 'badge-approved';
+                                if ($booking['booking_status'] == 'Rejected' || $booking['booking_status'] == 'Cancelled') $statusClass = 'badge-rejected';
+                            ?>
+                            <span class="badge <?= $statusClass ?>"><?= $booking['booking_status'] ?></span>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                <?php if (empty($recent_bookings)): ?>
+                    <tr>
+                        <td colspan="6" style="text-align: center;">No recent bookings.</td>
+                    </tr>
+                <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<?php require_once __DIR__ . '/includes/admin_footer.php'; ?>
+
+
+
+=================================================================
+File: C:\xampp\htdocs\hostal room booking web application\admin\edit_room.php
+=================================================================
+<?php
+require_once __DIR__ . '/includes/admin_header.php';
+
+if (!isset($_GET['id'])) {
+    header('Location: ' . BASE_URL . '/admin/manage_rooms.php');
+    exit();
+}
+
+$room_id = $_GET['id'];
+$success = '';
+$error = '';
+$upload_dir = __DIR__ . '/../uploads/';
+
+if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+    $room_number = trim($_POST['room_number']);
+    $title = trim($_POST['title']);
+    $type = trim($_POST['type']);
+    $description = trim($_POST['description']);
+    $price = $_POST['price'];
+    $capacity = $_POST['capacity'];
+    $facilities = trim($_POST['facilities']);
+    $availability_status = $_POST['availability_status'];
+
+    if (empty($room_number) || empty($title) || empty($price) || empty($capacity)) {
+        $error = "Room Number, Title, Price, and Capacity are required.";
+    } else {
+        $image_query = "";
+        $params = [$room_number, $title, $type, $description, $price, $capacity, $availability_status, $facilities];
+
+        // Handle Image Upload
+        if (isset($_FILES['image']) && $_FILES['image']['error'] == 0) {
+            $allowed_ext = ['jpg', 'jpeg', 'png', 'webp'];
+            $file_name = $_FILES['image']['name'];
+            $file_ext = strtolower(pathinfo($file_name, PATHINFO_EXTENSION));
+            
+            if (in_array($file_ext, $allowed_ext)) {
+                $new_name = uniqid('room_') . '.' . $file_ext;
+                if (move_uploaded_file($_FILES['image']['tmp_name'], $upload_dir . $new_name)) {
+                    $image_query = ", image = ?";
+                    $params[] = $new_name;
+                    
+                    // Optionally delete old image here if it's not default_room.jpg
+                } else {
+                    $error = "Failed to upload new image.";
+                }
+            } else {
+                $error = "Invalid image format. Allowed: jpg, jpeg, png, webp";
+            }
+        }
+
+        if (empty($error)) {
+            try {
+                $params[] = $room_id; // For the WHERE clause
+                $stmt = $conn->prepare("UPDATE rooms SET room_number = ?, title = ?, type = ?, description = ?, price = ?, capacity = ?, availability_status = ?, facilities = ? $image_query WHERE id = ?");
+                $stmt->execute($params);
+                $success = "Room updated successfully.";
+            } catch (PDOException $e) {
+                if ($e->errorInfo[1] == 1062) {
+                    $error = "Room number already exists.";
+                } else {
+                    $error = "Database error: " . $e->getMessage();
+                }
+            }
+        }
+    }
+}
+
+// Fetch current data
+$stmt = $conn->prepare("SELECT * FROM rooms WHERE id = ?");
+$stmt->execute([$room_id]);
+$room = $stmt->fetch();
+
+if (!$room) {
+    echo "Room not found.";
+    exit();
+}
+?>
+
+<div style="margin-bottom: 20px;">
+    <h2><a href="<?= BASE_URL ?>/admin/manage_rooms.php" style="color: var(--text-muted);"><i class="fas fa-arrow-left"></i> Manage Rooms</a> / Edit Room #<?= $room['id'] ?></h2>
+</div>
+
+<div class="glass-panel" style="padding: 30px; background: white; max-width: 800px;">
+    <?php if ($success): ?>
+        <div class="alert alert-success"><?= $success ?></div>
+    <?php endif; ?>
+    <?php if ($error): ?>
+        <div class="alert alert-danger"><?= htmlspecialchars($error) ?></div>
+    <?php endif; ?>
+
+    <form method="POST" action="" enctype="multipart/form-data">
+        <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 20px;">
+            <div class="form-group">
+                <label for="room_number">Room Number *</label>
+                <input type="text" id="room_number" name="room_number" class="form-control" value="<?= htmlspecialchars($room['room_number']) ?>" required>
+            </div>
+            <div class="form-group">
+                <label for="title">Title *</label>
+                <input type="text" id="title" name="title" class="form-control" value="<?= htmlspecialchars($room['title']) ?>" required>
+            </div>
+            <div class="form-group">
+                <label for="type">Room Type *</label>
+                <select id="type" name="type" class="form-control" required>
+                    <option value="Single" <?= $room['type'] == 'Single' ? 'selected' : '' ?>>Single</option>
+                    <option value="Double" <?= $room['type'] == 'Double' ? 'selected' : '' ?>>Double</option>
+                    <option value="Dormitory" <?= $room['type'] == 'Dormitory' ? 'selected' : '' ?>>Dormitory</option>
+                    <option value="Suite" <?= $room['type'] == 'Suite' ? 'selected' : '' ?>>Suite</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="price">Price (per night) *</label>
+                <input type="number" id="price" name="price" class="form-control" step="0.01" value="<?= htmlspecialchars($room['price']) ?>" required>
+            </div>
+            <div class="form-group">
+                <label for="capacity">Capacity (Persons) *</label>
+                <input type="number" id="capacity" name="capacity" class="form-control" value="<?= htmlspecialchars($room['capacity']) ?>" required>
+            </div>
+            <div class="form-group">
+                <label for="availability_status">Availability Status</label>
+                <select id="availability_status" name="availability_status" class="form-control">
+                    <option value="Available" <?= $room['availability_status'] == 'Available' ? 'selected' : '' ?>>Available</option>
+                    <option value="Unavailable" <?= $room['availability_status'] == 'Unavailable' ? 'selected' : '' ?>>Unavailable</option>
+                </select>
+            </div>
+        </div>
+        <div class="form-group">
+            <label for="facilities">Facilities</label>
+            <input type="text" id="facilities" name="facilities" class="form-control" value="<?= htmlspecialchars($room['facilities']) ?>">
+        </div>
+        <div class="form-group">
+            <label for="description">Description</label>
+            <textarea id="description" name="description" class="form-control" rows="5"><?= htmlspecialchars($room['description']) ?></textarea>
+        </div>
+        <div class="form-group">
+            <label for="image">Room Image (Leave empty to keep current)</label>
+            <div style="margin-bottom: 10px;">
+                <img src="<?= BASE_URL ?>/uploads/<?= htmlspecialchars($room['image']) ?>" alt="Current Image" style="height: 100px; border-radius: 4px;">
+            </div>
+            <input type="file" id="image" name="image" class="form-control" accept="image/*">
+        </div>
+        <button type="submit" class="btn btn-primary">Update Room</button>
+    </form>
+</div>
+
+<?php require_once __DIR__ . '/includes/admin_footer.php'; ?>
+
+
+
+=================================================================
+File: C:\xampp\htdocs\hostal room booking web application\admin\login.php
+=================================================================
+<?php
+require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../includes/auth.php';
+
+if (isAdminLoggedIn()) {
+    header('Location: ' . BASE_URL . '/admin/dashboard.php');
+    exit();
+}
+
+$error = '';
+
+if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+    $username = trim($_POST['username']);
+    $password = $_POST['password'];
+
+    if (empty($username) || empty($password)) {
+        $error = 'Please enter both username and password.';
+    } else {
+        $stmt = $conn->prepare("SELECT * FROM admins WHERE username = ?");
+        $stmt->execute([$username]);
+        $admin = $stmt->fetch();
+
+        if ($admin && password_verify($password, $admin['password'])) {
+            $_SESSION['admin_id'] = $admin['id'];
+            $_SESSION['admin_username'] = $admin['username'];
+            header('Location: ' . BASE_URL . '/admin/dashboard.php');
+            exit();
+        } else {
+            $error = 'Invalid admin credentials.';
+        }
+    }
+}
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Login - Hostel Room Booking</title>
+    <link rel="stylesheet" href="<?= BASE_URL ?>/assets/css/style.css?v=<?= time() ?>">
+</head>
+<body style="background-color: #111827; background-image: none;">
+    <div class="auth-wrapper">
+        <div class="glass-panel auth-card" style="background: rgba(31, 41, 55, 0.8); color: white; border: 1px solid #374151;">
+            <h2 style="color: white;">Admin Portal Access</h2>
+            <?php if ($error): ?>
+                <div class="alert alert-danger"><?= htmlspecialchars($error) ?></div>
+            <?php endif; ?>
+            <form method="POST" action="">
+                <div class="form-group">
+                    <label for="username" style="color: #D1D5DB;">Username</label>
+                    <input type="text" id="username" name="username" class="form-control" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid #4B5563;" required>
+                </div>
+                <div class="form-group">
+                    <label for="password" style="color: #D1D5DB;">Password</label>
+                    <input type="password" id="password" name="password" class="form-control" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid #4B5563;" required>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%;">Login to Dashboard</button>
+            </form>
+            <p style="text-align: center; margin-top: 20px;">
+                <a href="<?= BASE_URL ?>/index.php" style="color: #9CA3AF;">&larr; Back to Website</a>
+            </p>
+        </div>
+    </div>
+</body>
+</html>
+
+
+
+=================================================================
+File: C:\xampp\htdocs\hostal room booking web application\admin\logout.php
+=================================================================
+<?php
+session_start();
+require_once __DIR__ . '/../config/database.php';
+session_unset();
+session_destroy();
+header('Location: ' . BASE_URL . '/admin/login.php');
+exit();
+?>
+
+
+
+=================================================================
+File: C:\xampp\htdocs\hostal room booking web application\admin\manage_bookings.php
+=================================================================
+<?php
+require_once __DIR__ . '/includes/admin_header.php';
+
+$success = '';
+$error = '';
+
+if (isset($_GET['action']) && isset($_GET['id'])) {
+    $id = $_GET['id'];
+    $action = $_GET['action'];
+
+    if ($action == 'approve') {
+        $stmt = $conn->prepare("UPDATE bookings SET booking_status = 'Approved' WHERE id = ?");
+        if ($stmt->execute([$id])) $success = "Booking approved.";
+    } elseif ($action == 'reject') {
+        $stmt = $conn->prepare("UPDATE bookings SET booking_status = 'Rejected' WHERE id = ?");
+        if ($stmt->execute([$id])) $success = "Booking rejected.";
+    }
+}
+
+$bookings = $conn->query("SELECT b.*, u.name as user_name, u.email, r.room_number FROM bookings b 
+                          JOIN users u ON b.user_id = u.id 
+                          JOIN rooms r ON b.room_id = r.id 
+                          ORDER BY b.created_at DESC")->fetchAll();
+?>
+
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    <h2>Manage Bookings</h2>
+</div>
+
+<?php if ($success): ?>
+    <div class="alert alert-success"><?= $success ?></div>
+<?php endif; ?>
+
+<div class="glass-panel" style="padding: 20px; background: white;">
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>User</th>
+                    <th>Room</th>
+                    <th>Dates</th>
+                    <th>Amount</th>
+                    <th>Booking Status</th>
+                    <th>Payment Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($bookings as $booking): ?>
+                    <tr>
+                        <td>#<?= $booking['id'] ?></td>
+                        <td>
+                            <?= htmlspecialchars($booking['user_name']) ?><br>
+                            <small style="color: var(--text-muted);"><?= htmlspecialchars($booking['email']) ?></small>
+                        </td>
+                        <td><?= htmlspecialchars($booking['room_number']) ?></td>
+                        <td>
+                            <small>
+                                In: <?= date('M d, Y', strtotime($booking['check_in'])) ?><br>
+                                Out: <?= date('M d, Y', strtotime($booking['check_out'])) ?>
+                            </small>
+                        </td>
+                        <td>Rs. <?= number_format($booking['total_price'], 2) ?></td>
+                        <td>
+                            <?php 
+                                $statusClass = 'badge-pending';
+                                if ($booking['booking_status'] == 'Approved') $statusClass = 'badge-approved';
+                                if ($booking['booking_status'] == 'Rejected' || $booking['booking_status'] == 'Cancelled') $statusClass = 'badge-rejected';
+                            ?>
+                            <span class="badge <?= $statusClass ?>"><?= $booking['booking_status'] ?></span>
+                        </td>
+                        <td>
+                            <span class="badge <?= $booking['payment_status'] == 'Paid' ? 'badge-approved' : 'badge-pending' ?>"><?= $booking['payment_status'] ?></span>
+                        </td>
+                        <td>
+                            <?php if ($booking['booking_status'] == 'Pending'): ?>
+                                <a href="?action=approve&id=<?= $booking['id'] ?>" class="btn btn-success" style="padding: 4px 8px; font-size: 0.8rem; background: var(--success); color: white; border-radius: 4px; display: inline-block; margin-bottom: 5px;" onclick="return confirm('Approve this booking?');">Approve</a>
+                                <a href="?action=reject&id=<?= $booking['id'] ?>" class="btn btn-danger" style="padding: 4px 8px; font-size: 0.8rem; border-radius: 4px; display: inline-block;" onclick="return confirm('Reject this booking?');">Reject</a>
+                            <?php else: ?>
+                                <span style="font-size: 0.8rem; color: var(--text-muted);">Resolved</span>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                <?php if (empty($bookings)): ?>
+                    <tr>
+                        <td colspan="8" style="text-align: center;">No bookings found.</td>
+                    </tr>
+                <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<?php require_once __DIR__ . '/includes/admin_footer.php'; ?>
+
+
+
+=================================================================
+File: C:\xampp\htdocs\hostal room booking web application\admin\manage_payments.php
+=================================================================
+<?php
+require_once __DIR__ . '/includes/admin_header.php';
+
+if (isset($_GET['action']) && isset($_GET['id'])) {
+    $id = $_GET['id'];
+    $action = $_GET['action'];
+
+    if ($action == 'mark_paid') {
+        $stmt = $conn->prepare("UPDATE payments SET payment_status = 'Paid', transaction_id = ? WHERE id = ?");
+        $transaction_id = 'TXN' . strtoupper(uniqid());
+        if ($stmt->execute([$transaction_id, $id])) {
+            // Also update booking status to Approved if we want, or leave it independent
+            $success = "Payment marked as Paid.";
+        }
+    } elseif ($action == 'mark_failed') {
+        $stmt = $conn->prepare("UPDATE payments SET payment_status = 'Failed' WHERE id = ?");
+        if ($stmt->execute([$id])) $success = "Payment marked as Failed.";
+    }
+}
+
+$payments = $conn->query("SELECT p.*, b.id as booking_ref, u.name as user_name FROM payments p 
+                          JOIN bookings b ON p.booking_id = b.id
+                          JOIN users u ON b.user_id = u.id
+                          ORDER BY p.created_at DESC")->fetchAll();
+?>
+
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    <h2>Manage Payments</h2>
+</div>
+
+<?php if (isset($success)): ?>
+    <div class="alert alert-success"><?= $success ?></div>
+<?php endif; ?>
+
+<div class="glass-panel" style="padding: 20px; background: white;">
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>Payment ID</th>
+                    <th>Booking Ref</th>
+                    <th>User</th>
+                    <th>Amount</th>
+                    <th>Method</th>
+                    <th>Transaction ID</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($payments as $payment): ?>
+                    <tr>
+                        <td>#<?= $payment['id'] ?></td>
+                        <td>#<?= $payment['booking_ref'] ?></td>
+                        <td><?= htmlspecialchars($payment['user_name']) ?></td>
+                        <td>Rs. <?= number_format($payment['amount'], 2) ?></td>
+                        <td><?= htmlspecialchars($payment['payment_method']) ?></td>
+                        <td><?= htmlspecialchars($payment['transaction_id'] ?? 'N/A') ?></td>
+                        <td>
+                            <?php 
+                                $statusClass = 'badge-pending';
+                                if ($payment['payment_status'] == 'Paid') $statusClass = 'badge-approved';
+                                if ($payment['payment_status'] == 'Failed') $statusClass = 'badge-rejected';
+                            ?>
+                            <span class="badge <?= $statusClass ?>"><?= $payment['payment_status'] ?></span>
+                        </td>
+                        <td>
+                            <?php if ($payment['payment_status'] == 'Pending'): ?>
+                                <a href="?action=mark_paid&id=<?= $payment['id'] ?>" class="btn btn-success" style="padding: 4px 8px; font-size: 0.8rem; background: var(--success); color: white; border-radius: 4px;" onclick="return confirm('Mark as Paid?');">Mark Paid</a>
+                                <a href="?action=mark_failed&id=<?= $payment['id'] ?>" class="btn btn-danger" style="padding: 4px 8px; font-size: 0.8rem; border-radius: 4px;" onclick="return confirm('Mark as Failed?');">Mark Failed</a>
+                            <?php else: ?>
+                                <span style="font-size: 0.8rem; color: var(--text-muted);">Completed</span>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                <?php if (empty($payments)): ?>
+                    <tr>
+                        <td colspan="8" style="text-align: center;">No payments found.</td>
+                    </tr>
+                <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<?php require_once __DIR__ . '/includes/admin_footer.php'; ?>
+
+
+
+=================================================================
+File: C:\xampp\htdocs\hostal room booking web application\admin\manage_rooms.php
+=================================================================
+<?php
+require_once __DIR__ . '/includes/admin_header.php';
+
+$success = '';
+$error = '';
+
+if (isset($_GET['delete_id'])) {
+    $delete_id = $_GET['delete_id'];
+    // Delete image if not default
+    $stmt = $conn->prepare("SELECT image FROM rooms WHERE id = ?");
+    $stmt->execute([$delete_id]);
+    $room = $stmt->fetch();
+    if ($room && $room['image'] != 'default_room.jpg') {
+        $img_path = __DIR__ . '/../uploads/' . $room['image'];
+        if (file_exists($img_path)) {
+            unlink($img_path);
+        }
+    }
+    
+    $stmt = $conn->prepare("DELETE FROM rooms WHERE id = ?");
+    if ($stmt->execute([$delete_id])) {
+        $success = "Room deleted successfully.";
+    } else {
+        $error = "Failed to delete room.";
+    }
+}
+
+$rooms = $conn->query("SELECT * FROM rooms ORDER BY id DESC")->fetchAll();
+?>
+
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    <h2>Manage Rooms</h2>
+    <a href="<?= BASE_URL ?>/admin/add_room.php" class="btn btn-primary"><i class="fas fa-plus"></i> Add New Room</a>
+</div>
+
+<?php if ($success): ?>
+    <div class="alert alert-success"><?= $success ?></div>
+<?php endif; ?>
+<?php if ($error): ?>
+    <div class="alert alert-danger"><?= htmlspecialchars($error) ?></div>
+<?php endif; ?>
+
+<div class="glass-panel" style="padding: 20px; background: white;">
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>Image</th>
+                    <th>Room No</th>
+                    <th>Title</th>
+                    <th>Type</th>
+                    <th>Price</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($rooms as $room): ?>
+                    <tr>
+                        <td><img src="<?= BASE_URL ?>/uploads/<?= htmlspecialchars($room['image']) ?>" alt="Room" style="width: 80px; height: 50px; object-fit: cover; border-radius: 4px;" onerror="this.src='https://via.placeholder.com/80x50?text=IMG'"></td>
+                        <td><?= htmlspecialchars($room['room_number']) ?></td>
+                        <td><?= htmlspecialchars($room['title']) ?></td>
+                        <td><?= htmlspecialchars($room['type']) ?></td>
+                        <td>Rs. <?= number_format($room['price'], 2) ?></td>
+                        <td>
+                            <?php if ($room['availability_status'] == 'Available'): ?>
+                                <span class="badge badge-approved">The Available</span>
+                            <?php else: ?>
+                                <span class="badge badge-rejected">The Unavailable</span>
+                            <?php endif; ?>
+                        </td>
+                        <td>
+                            <a href="<?= BASE_URL ?>/admin/edit_room.php?id=<?= $room['id'] ?>" class="btn btn-secondary" style="padding: 5px 10px; font-size: 0.8rem; margin-right: 5px;"><i class="fas fa-edit"></i> Edit</a>
+                            <a href="?delete_id=<?= $room['id'] ?>" class="btn btn-danger btn-delete" style="padding: 5px 10px; font-size: 0.8rem;" onclick="return confirm('Are you sure you want to delete this room?');"><i class="fas fa-trash"></i> Delete</a>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                <?php if (empty($rooms)): ?>
+                    <tr>
+                        <td colspan="7" style="text-align: center;">No rooms found.</td>
+                    </tr>
+                <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<?php require_once __DIR__ . '/includes/admin_footer.php'; ?>
+
+
+
+=================================================================
+File: C:\xampp\htdocs\hostal room booking web application\admin\manage_users.php
+=================================================================
+<?php
+require_once __DIR__ . '/includes/admin_header.php';
+
+if (isset($_GET['delete_id'])) {
+    $delete_id = $_GET['delete_id'];
+    $stmt = $conn->prepare("DELETE FROM users WHERE id = ?");
+    if ($stmt->execute([$delete_id])) {
+        $success = "User deleted successfully.";
+    } else {
+        $error = "Failed to delete user.";
+    }
+}
+
+$users = $conn->query("SELECT * FROM users ORDER BY created_at DESC")->fetchAll();
+?>
+
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    <h2>Manage Users</h2>
+</div>
+
+<?php if (isset($success)): ?>
+    <div class="alert alert-success"><?= $success ?></div>
+<?php endif; ?>
+
+<div class="glass-panel" style="padding: 20px; background: white;">
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Phone</th>
+                    <th>Registered On</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($users as $user): ?>
+                    <tr>
+                        <td>#<?= $user['id'] ?></td>
+                        <td><?= htmlspecialchars($user['name']) ?></td>
+                        <td><?= htmlspecialchars($user['email']) ?></td>
+                        <td><?= htmlspecialchars($user['phone']) ?></td>
+                        <td><?= date('M d, Y', strtotime($user['created_at'])) ?></td>
+                        <td>
+                            <a href="?delete_id=<?= $user['id'] ?>" class="btn btn-danger btn-delete" style="padding: 4px 8px; font-size: 0.8rem; border-radius: 4px;" onclick="return confirm('Delete this user? All their bookings will also be deleted.');">Delete</a>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                <?php if (empty($users)): ?>
+                    <tr>
+                        <td colspan="6" style="text-align: center;">No users found.</td>
+                    </tr>
+                <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<?php require_once __DIR__ . '/includes/admin_footer.php'; ?>
+
+
+
+=================================================================
+File: C:\xampp\htdocs\hostal room booking web application\admin\reports.php
+=================================================================
+<?php
+require_once __DIR__ . '/includes/admin_header.php';
+
+// Get monthly revenue for the current year
+$year = date('Y');
+$stmt = $conn->prepare("
+    SELECT MONTH(created_at) as month, SUM(amount) as revenue 
+    FROM payments 
+    WHERE YEAR(created_at) = ? AND payment_status = 'Paid' 
+    GROUP BY MONTH(created_at)
+");
+$stmt->execute([$year]);
+$monthly_revenue = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
+
+// Get popular rooms
+$popular_rooms = $conn->query("
+    SELECT r.title, r.room_number, COUNT(b.id) as bookings_count 
+    FROM rooms r 
+    LEFT JOIN bookings b ON r.id = b.room_id 
+    GROUP BY r.id 
+    ORDER BY bookings_count DESC 
+    LIMIT 5
+")->fetchAll();
+?>
+
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    <h2>Reports & Analytics</h2>
+</div>
+
+<div class="grid" style="grid-template-columns: 1fr 1fr; gap: 30px;">
+    
+    <div class="glass-panel" style="padding: 20px; background: white;">
+        <h3 style="margin-bottom: 20px; border-bottom: 1px solid var(--glass-border); padding-bottom: 10px;">Monthly Revenue (<?= $year ?>)</h3>
+        <table style="margin-top: 0;">
+            <thead>
+                <tr>
+                    <th>Month</th>
+                    <th>Revenue</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php 
+                $months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+                $total_year = 0;
+                foreach ($months as $index => $monthName): 
+                    $m = $index + 1;
+                    $rev = isset($monthly_revenue[$m]) ? $monthly_revenue[$m] : 0;
+                    $total_year += $rev;
+                ?>
+                    <tr>
+                        <td><?= $monthName ?></td>
+                        <td>Rs. <?= number_format($rev, 2) ?></td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+            <tfoot>
+                <tr>
+                    <th>Total</th>
+                    <th style="color: var(--success); font-size: 1.1rem;">Rs. <?= number_format($total_year, 2) ?></th>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+
+    <div class="glass-panel" style="padding: 20px; background: white;">
+        <h3 style="margin-bottom: 20px; border-bottom: 1px solid var(--glass-border); padding-bottom: 10px;">Most Popular Rooms</h3>
+        <table style="margin-top: 0;">
+            <thead>
+                <tr>
+                    <th>Room</th>
+                    <th>Total Bookings</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($popular_rooms as $room): ?>
+                    <tr>
+                        <td><?= htmlspecialchars($room['title']) ?> (<?= htmlspecialchars($room['room_number']) ?>)</td>
+                        <td>
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <div style="flex-grow: 1; background: #E5E7EB; height: 10px; border-radius: 5px;">
+                                    <div style="width: <?= min(100, $room['bookings_count'] * 10) ?>%; background: var(--primary-color); height: 100%; border-radius: 5px;"></div>
+                                </div>
+                                <span><?= $room['bookings_count'] ?></span>
+                            </div>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                <?php if (empty($popular_rooms)): ?>
+                    <tr>
+                        <td colspan="2" style="text-align: center;">No booking data available.</td>
+                    </tr>
+                <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+
+</div>
+
+<?php require_once __DIR__ . '/includes/admin_footer.php'; ?>
+
+
+
+=================================================================
+File: C:\xampp\htdocs\hostal room booking web application\admin\includes\admin_footer.php
+=================================================================
+            </div>
+        </div>
+    </div>
+    <script src="<?= BASE_URL ?>/assets/js/main.js"></script>
+</body>
+</html>
+
+
+
+=================================================================
+File: C:\xampp\htdocs\hostal room booking web application\admin\includes\admin_header.php
+=================================================================
+<?php
+// admin/includes/admin_header.php
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../../includes/auth.php';
+requireAdminLogin();
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - Hostel Room Booking</title>
+    <link rel="stylesheet" href="<?= BASE_URL ?>/assets/css/style.css?v=<?= time() ?>">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { background-color: #F9FAFB; background-image: none; }
+        .admin-layout { display: flex; min-height: 100vh; }
+        .admin-sidebar { width: 260px; background: #111827; color: white; flex-shrink: 0; display: flex; flex-direction: column; }
+        .admin-sidebar-header { padding: 20px; text-align: center; border-bottom: 1px solid #374151; font-size: 1.2rem; font-weight: bold; }
+        .admin-nav { flex-grow: 1; padding: 20px 0; }
+        .admin-nav a { display: block; padding: 12px 20px; color: #D1D5DB; transition: all 0.3s; }
+        .admin-nav a:hover, .admin-nav a.active { background: #1F2937; color: white; border-left: 4px solid var(--primary-color); }
+        .admin-nav i { width: 25px; text-align: center; margin-right: 10px; }
+        .admin-main { flex-grow: 1; display: flex; flex-direction: column; }
+        .admin-topbar { height: 70px; background: white; border-bottom: 1px solid #E5E7EB; display: flex; align-items: center; justify-content: space-between; padding: 0 30px; }
+        .admin-content { padding: 30px; flex-grow: 1; overflow-y: auto; }
+    </style>
+</head>
+<body>
+    <div class="admin-layout">
+        <?php require_once __DIR__ . '/admin_sidebar.php'; ?>
+        <div class="admin-main">
+            <div class="admin-topbar">
+                <h2 style="font-size: 1.25rem;">Admin Panel</h2>
+                <div style="display: flex; align-items: center; gap: 15px;">
+                    <span style="font-weight: 500;">Hello, <?= htmlspecialchars($_SESSION['admin_username']) ?></span>
+                    <a href="<?= BASE_URL ?>/admin/logout.php" class="btn btn-danger" style="padding: 6px 15px;">Logout</a>
+                </div>
+            </div>
+            <div class="admin-content">
+
+
+
+=================================================================
+File: C:\xampp\htdocs\hostal room booking web application\admin\includes\admin_sidebar.php
+=================================================================
+<?php
+$current_page = basename($_SERVER['PHP_SELF']);
+?>
+<div class="admin-sidebar">
+    <div class="admin-sidebar-header">
+        <i class="fas fa-bed" style="color: var(--primary-color);"></i> HostelBook Admin
+    </div>
+    <div class="admin-nav">
+        <a href="<?= BASE_URL ?>/admin/dashboard.php" class="<?= $current_page == 'dashboard.php' ? 'active' : '' ?>">
+            <i class="fas fa-tachometer-alt"></i> Dashboard
+        </a>
+        <a href="<?= BASE_URL ?>/admin/manage_rooms.php" class="<?= in_array($current_page, ['manage_rooms.php', 'add_room.php', 'edit_room.php']) ? 'active' : '' ?>">
+            <i class="fas fa-door-open"></i> Manage Rooms
+        </a>
+        <a href="<?= BASE_URL ?>/admin/manage_bookings.php" class="<?= $current_page == 'manage_bookings.php' ? 'active' : '' ?>">
+            <i class="fas fa-calendar-check"></i> Manage Bookings
+        </a>
+        <a href="<?= BASE_URL ?>/admin/manage_users.php" class="<?= $current_page == 'manage_users.php' ? 'active' : '' ?>">
+            <i class="fas fa-users"></i> Manage Users
+        </a>
+        <a href="<?= BASE_URL ?>/admin/manage_payments.php" class="<?= $current_page == 'manage_payments.php' ? 'active' : '' ?>">
+            <i class="fas fa-money-bill-wave"></i> Payments
+        </a>
+        <a href="<?= BASE_URL ?>/admin/contact_messages.php" class="<?= $current_page == 'contact_messages.php' ? 'active' : '' ?>">
+            <i class="fas fa-envelope"></i> Contact Messages
+        </a>
+        <a href="<?= BASE_URL ?>/admin/reports.php" class="<?= $current_page == 'reports.php' ? 'active' : '' ?>">
+            <i class="fas fa-chart-pie"></i> Reports
+        </a>
+        <a href="<?= BASE_URL ?>/index.php" target="_blank" style="margin-top: 30px; border-top: 1px solid #374151;">
+            <i class="fas fa-external-link-alt"></i> View Site
+        </a>
+    </div>
+</div>
+
+
+
+=================================================================
+File: C:\xampp\htdocs\hostal room booking web application\assets\css\style.css
+=================================================================
+/* assets/css/style.css */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+:root {
+    --primary-color: #4F46E5;
+    --primary-hover: #4338CA;
+    --secondary-color: #10B981;
+    --bg-color: #F3F4F6;
+    --text-main: #1F2937;
+    --text-muted: #6B7280;
+    --glass-bg: rgba(255, 255, 255, 0.7);
+    --glass-border: rgba(255, 255, 255, 0.3);
+    --glass-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
+    --danger: #EF4444;
+    --success: #10B981;
+    --warning: #F59E0B;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Inter', sans-serif;
+}
+
+body {
+    background: var(--bg-color);
+    color: var(--text-main);
+    line-height: 1.6;
+    background-image: radial-gradient(circle at 10% 20%, rgba(79, 70, 229, 0.1) 0%, rgba(79, 70, 229, 0) 90%),
+        radial-gradient(circle at 90% 80%, rgba(16, 185, 129, 0.1) 0%, rgba(16, 185, 129, 0) 90%);
+    background-attachment: fixed;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+a {
+    text-decoration: none;
+    color: var(--primary-color);
+    transition: all 0.3s ease;
+}
+
+a:hover {
+    color: var(--primary-hover);
+}
+
+ul {
+    list-style: none;
+}
+
+/* Glassmorphism Utilities */
+.glass-panel {
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+    border-radius: 16px;
+    box-shadow: var(--glass-shadow);
+}
+
+/* Layout */
+.container {
+    width: 100%;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 20px;
+}
+
+/* Navbar */
+.navbar {
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.5);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+}
+
+.navbar .container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    height: 70px;
+}
+
+.navbar-brand {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--primary-color);
+}
+
+.nav-links {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+}
+
+.nav-links a {
+    color: var(--text-main);
+    font-weight: 500;
+}
+
+.nav-links a:hover,
+.nav-links a.active {
+    color: var(--primary-color);
+}
+
+.btn {
+    display: inline-block;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-weight: 600;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border: none;
+    outline: none;
+}
+
+.btn-primary {
+    background: var(--primary-color);
+    color: #fff;
+    box-shadow: 0 4px 14px rgba(79, 70, 229, 0.39);
+}
+
+.btn-primary:hover {
+    background: var(--primary-hover);
+    transform: translateY(-2px);
+    color: #fff;
+}
+
+.btn-secondary {
+    background: transparent;
+    color: var(--primary-color);
+    border: 2px solid var(--primary-color);
+}
+
+.btn-secondary:hover {
+    background: var(--primary-color);
+    color: #fff;
+}
+
+.btn-danger {
+    background: var(--danger);
+    color: white;
+}
+
+.btn-danger:hover {
+    background: #DC2828;
+}
+
+/* Main Content area */
+main {
+    flex-grow: 1;
+    padding: 40px 0;
+}
+
+/* Forms */
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 500;
+    color: var(--text-main);
+}
+
+.form-control {
+    width: 100%;
+    padding: 12px 16px;
+    border: 1px solid #D1D5DB;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.9);
+    transition: all 0.3s ease;
+    font-size: 1rem;
+}
+
+.form-control:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.2);
+}
+
+/* Auth Cards (Login/Register) */
+.auth-wrapper {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 80vh;
+}
+
+.auth-card {
+    width: 100%;
+    max-width: 450px;
+    padding: 40px;
+}
+
+.auth-card h2 {
+    text-align: center;
+    margin-bottom: 30px;
+    color: var(--text-main);
+}
+
+/* Room Cards */
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 30px;
+}
+
+.room-card {
+    overflow: hidden;
+    transition: transform 0.3s ease;
+}
+
+.room-card:hover {
+    transform: translateY(-10px);
+}
+
+.room-img-container {
+    height: 200px;
+    overflow: hidden;
+    position: relative;
+}
+
+.room-img-container img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.5s ease;
+}
+
+.room-card:hover .room-img-container img {
+    transform: scale(1.05);
+}
+
+.room-details {
+    padding: 20px;
+}
+
+.room-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin-bottom: 10px;
+}
+
+.room-price {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--primary-color);
+    margin-bottom: 15px;
+}
+
+/* Alerts */
+.alert {
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+.alert-success {
+    background-color: #D1FAE5;
+    color: #065F46;
+    border: 1px solid #34D399;
+}
+
+.alert-danger {
+    background-color: #FEE2E2;
+    color: #991B1B;
+    border: 1px solid #F87171;
+}
+
+/* Dashboard Sidebar */
+.dashboard-layout {
+    display: flex;
+    min-height: calc(100vh - 70px - 200px);
+    /* Adjusting for nav and footer roughly */
+    gap: 30px;
+}
+
+.sidebar {
+    width: 250px;
+    flex-shrink: 0;
+}
+
+.sidebar ul {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.sidebar a {
+    display: block;
+    padding: 12px 20px;
+    border-radius: 8px;
+    color: var(--text-main);
+    font-weight: 500;
+    transition: all 0.3s;
+}
+
+.sidebar a:hover,
+.sidebar a.active {
+    background: var(--primary-color);
+    color: white;
+}
+
+.dashboard-content {
+    flex-grow: 1;
+}
+
+/* Tables */
+.table-responsive {
+    overflow-x: auto;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+}
+
+th,
+td {
+    padding: 15px;
+    text-align: left;
+    border-bottom: 1px solid #E5E7EB;
+}
+
+th {
+    background-color: rgba(249, 250, 251, 0.5);
+    font-weight: 600;
+}
+
+/* Footer */
+footer {
+    background: #111827;
+    color: #D1D5DB;
+    padding: 40px 0 20px;
+    margin-top: auto;
+}
+
+.footer-content {
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 30px;
+    margin-bottom: 30px;
+}
+
+.footer-section {
+    flex: 1;
+    min-width: 250px;
+}
+
+.footer-section h3 {
+    color: white;
+    margin-bottom: 15px;
+}
+
+.footer-bottom {
+    text-align: center;
+    padding-top: 20px;
+    border-top: 1px solid #374151;
+}
+
+/* Status Badges */
+.badge {
+    padding: 4px 8px;
+    border-radius: 9999px;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.badge-pending {
+    background: #DBEAFE;
+    color: #1247db;
+}
+
+.badge-approved {
+    background: #D1FAE5;
+    color: #065F46;
+}
+
+.badge-rejected {
+    background: #FEE2E2;
+    color: #991B1B;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .nav-links {
+        display: none;
+        /* In a real app, add a hamburger menu */
+    }
+
+    .dashboard-layout {
+        flex-direction: column;
+    }
+
+    .sidebar {
+        width: 100%;
+    }
+}
+
+
+
+=================================================================
+File: C:\xampp\htdocs\hostal room booking web application\assets\js\main.js
+=================================================================
+// assets/js/main.js
+
+document.addEventListener('DOMContentLoaded', () => {
+    // Basic confirmation dialogs
+    const deleteButtons = document.querySelectorAll('.btn-delete');
+    deleteButtons.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            if (!confirm('Are you sure you want to perform this action?')) {
+                e.preventDefault();
+            }
+        });
+    });
+
+    // Booking Price Calculator
+    const checkInInput = document.getElementById('check_in');
+    const checkOutInput = document.getElementById('check_out');
+    const priceDisplay = document.getElementById('total_price_display');
+    const priceInput = document.getElementById('total_price');
+    const roomPriceElement = document.getElementById('room_price');
+
+    if (checkInInput && checkOutInput && priceDisplay && roomPriceElement) {
+        const roomPrice = parseFloat(roomPriceElement.dataset.price);
+
+        const calculatePrice = () => {
+            const checkInDate = new Date(checkInInput.value);
+            const checkOutDate = new Date(checkOutInput.value);
+
+            if (checkInDate && checkOutDate && checkOutDate > checkInDate) {
+                const diffTime = Math.abs(checkOutDate - checkInDate);
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                const total = diffDays * roomPrice;
+                
+                priceDisplay.textContent = '$' + total.toFixed(2);
+                if (priceInput) priceInput.value = total.toFixed(2);
+            } else {
+                priceDisplay.textContent = '$0.00';
+                if (priceInput) priceInput.value = '0.00';
+            }
+        };
+
+        checkInInput.addEventListener('change', calculatePrice);
+        checkOutInput.addEventListener('change', calculatePrice);
+    }
+
+    // Room Filtering (Live Search)
+    const searchInput = document.getElementById('search_rooms');
+    const roomCards = document.querySelectorAll('.room-card');
+
+    if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+            const query = e.target.value.toLowerCase();
+            roomCards.forEach(card => {
+                const title = card.querySelector('.room-title').textContent.toLowerCase();
+                if (title.includes(query)) {
+                    card.style.display = 'block';
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+        });
+    }
+
+    // Auto-hide alerts after 5 seconds
+    const alerts = document.querySelectorAll('.alert');
+    if (alerts.length > 0) {
+        setTimeout(() => {
+            alerts.forEach(alert => {
+                alert.style.opacity = '0';
+                setTimeout(() => alert.remove(), 500);
+            });
+        }, 5000);
+    }
+});
+
+
+
+=================================================================
+File: C:\xampp\htdocs\hostal room booking web application\config\database.php
+=================================================================
+<?php
+// config/database.php
+
+$host = 'localhost';
+$db_name = 'hostel_booking';
+$username = 'root';
+$password = '';
+
+// Define base URL to avoid routing issues on different setups
+define('BASE_URL', '/hostal room booking web application');
+
+try {
+    $conn = new PDO("mysql:host={$host};dbname={$db_name}", $username, $password);
+    // Set the PDO error mode to exception
+    $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    // Set default fetch mode to associative array
+    $conn->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+} catch(PDOException $exception) {
+    echo "Connection error: " . $exception->getMessage();
+    exit();
+}
+?>
+
+
+
+=================================================================
+File: C:\xampp\htdocs\hostal room booking web application\database\hostel_booking.sql
+=================================================================
+CREATE DATABASE IF NOT EXISTS hostel_booking;
+USE hostel_booking;
+
+-- Users Table
+CREATE TABLE IF NOT EXISTS users (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    email VARCHAR(100) NOT NULL UNIQUE,
+    phone VARCHAR(20) NOT NULL,
+    password VARCHAR(255) NOT NULL,
+    profile_image VARCHAR(255) DEFAULT 'default.jpg',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Admins Table
+CREATE TABLE IF NOT EXISTS admins (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(50) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Insert Default Admin (username: admin, password: password123 hashed)
+INSERT INTO admins (username, password) VALUES ('admin', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi');
+
+-- Rooms Table
+CREATE TABLE IF NOT EXISTS rooms (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    room_number VARCHAR(20) NOT NULL UNIQUE,
+    title VARCHAR(100) NOT NULL,
+    type VARCHAR(50) NOT NULL,
+    description TEXT NOT NULL,
+    price DECIMAL(10,2) NOT NULL,
+    capacity INT NOT NULL,
+    image VARCHAR(255) DEFAULT 'default_room.jpg',
+    availability_status ENUM('Available', 'Unavailable') DEFAULT 'Available',
+    facilities TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Insert some default rooms
+INSERT INTO rooms (room_number, title, type, description, price, capacity, facilities) VALUES 
+('101', 'Standard Single Room', 'Single', 'A cozy room for solo travelers.', 500.00, 1, 'WiFi,Fan,Bed,Study Table'),
+('102', 'Deluxe Double Room', 'Double', 'Spacious room for two with AC.', 900.00, 2, 'WiFi,Air Conditioner,Attached Bathroom,Bed,Balcony'),
+('201', 'Shared Dormitory', 'Dormitory', 'Affordable shared accommodation.', 300.00, 4, 'WiFi,Fan,Study Table,Shared Bathroom');
+
+-- Bookings Table
+CREATE TABLE IF NOT EXISTS bookings (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    room_id INT NOT NULL,
+    check_in DATE NOT NULL,
+    check_out DATE NOT NULL,
+    total_price DECIMAL(10,2) NOT NULL,
+    booking_status ENUM('Pending', 'Approved', 'Rejected', 'Cancelled') DEFAULT 'Pending',
+    payment_status ENUM('Pending', 'Paid', 'Failed') DEFAULT 'Pending',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
+);
+
+-- Payments Table
+CREATE TABLE IF NOT EXISTS payments (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    booking_id INT NOT NULL,
+    payment_method VARCHAR(50) NOT NULL,
+    amount DECIMAL(10,2) NOT NULL,
+    payment_status ENUM('Pending', 'Paid', 'Failed') DEFAULT 'Pending',
+    transaction_id VARCHAR(100),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE CASCADE
+);
+
+-- Feedback Table
+CREATE TABLE IF NOT EXISTS feedback (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    message TEXT NOT NULL,
+    rating INT NOT NULL CHECK (rating >= 1 AND rating <= 5),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Contact Messages Table
+CREATE TABLE IF NOT EXISTS contact_messages (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    email VARCHAR(100) NOT NULL,
+    subject VARCHAR(200) NOT NULL,
+    message TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+
+
+=================================================================
+File: C:\xampp\htdocs\hostal room booking web application\includes\auth.php
+=================================================================
+<?php
+// includes/auth.php
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+require_once __DIR__ . '/../config/database.php';
+
+// Function to check if user is logged in
+function isUserLoggedIn() {
+    return isset($_SESSION['user_id']);
+}
+
+// Function to check if admin is logged in
+function isAdminLoggedIn() {
+    return isset($_SESSION['admin_id']);
+}
+
+// Redirect user if not logged in
+function requireUserLogin() {
+    if (!isUserLoggedIn()) {
+        header('Location: ' . BASE_URL . '/login.php');
+        exit();
+    }
+}
+
+// Redirect admin if not logged in
+function requireAdminLogin() {
+    if (!isAdminLoggedIn()) {
+        header('Location: ' . BASE_URL . '/admin/login.php');
+        exit();
+    }
+}
+
+// Get current user details
+function getCurrentUser($conn) {
+    if (isUserLoggedIn()) {
+        $stmt = $conn->prepare("SELECT * FROM users WHERE id = ?");
+        $stmt->execute([$_SESSION['user_id']]);
+        return $stmt->fetch();
+    }
+    return null;
+}
+?>
+
+
+
+=================================================================
+File: C:\xampp\htdocs\hostal room booking web application\includes\footer.php
+=================================================================
+        </div>
+    </main>
+    <footer>
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h3>HostelBook</h3>
+                    <p>Your trusted platform for booking the best and most affordable hostel rooms online. Enjoy a seamless experience.</p>
+                </div>
+                <div class="footer-section">
+                    <h3>Quick Links</h3>
+                    <ul>
+                        <li><a href="<?= BASE_URL ?>/rooms.php" style="color: #D1D5DB;">Browse Rooms</a></li>
+                        <li><a href="<?= BASE_URL ?>/about.php" style="color: #D1D5DB;">About Us</a></li>
+                        <li><a href="<?= BASE_URL ?>/contact.php" style="color: #D1D5DB;">Contact</a></li>
+                        <li><a href="<?= BASE_URL ?>/faq.php" style="color: #D1D5DB;">FAQs</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h3>Contact Info</h3>
+                    <p><i class="fas fa-map-marker-alt"></i> No.25,Main Street,Colombo 10, Sri lanka.</p>
+                    <p><i class="fas fa-phone"></i> +94 77 1234567</p>
+                    <p><i class="fas fa-envelope"></i> info@hostelbook.com</p>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; <?= date('Y') ?> Hostel Room Booking. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+    <script src="<?= BASE_URL ?>/assets/js/main.js"></script>
+</body>
+</html>
+
+
+
+=================================================================
+File: C:\xampp\htdocs\hostal room booking web application\includes\header.php
+=================================================================
+<?php
+// includes/header.php
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/auth.php';
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hostel Room Booking</title>
+    <link rel="stylesheet" href="<?= BASE_URL ?>/assets/css/style.css?v=<?= time() ?>">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="container">
+            <a href="<?= BASE_URL ?>/index.php" class="navbar-brand">
+                <i class="fas fa-bed"></i> HostelBook
+            </a>
+            <div class="nav-links">
+                <a href="<?= BASE_URL ?>/index.php">Home</a>
+                <a href="<?= BASE_URL ?>/rooms.php">Rooms</a>
+                <a href="<?= BASE_URL ?>/about.php">About</a>
+                <a href="<?= BASE_URL ?>/contact.php">Contact</a>
+                <a href="<?= BASE_URL ?>/faq.php">FAQ</a>
+                <?php if (isUserLoggedIn()): ?>
+                    <a href="<?= BASE_URL ?>/user/dashboard.php">Dashboard</a>
+                    <a href="<?= BASE_URL ?>/logout.php" class="btn btn-danger">Logout</a>
+                <?php else: ?>
+                    <a href="<?= BASE_URL ?>/login.php" class="btn btn-secondary">Login</a>
+                    <a href="<?= BASE_URL ?>/register.php" class="btn btn-primary">Register</a>
+                <?php endif; ?>
+            </div>
+        </div>
+    </nav>
+    <main>
+        <div class="container">
+
+
+
+=================================================================
+File: C:\xampp\htdocs\hostal room booking web application\user\booking-history.php
+=================================================================
+<?php
+require_once __DIR__ . '/../includes/header.php';
+requireUserLogin();
+
+$user_id = $_SESSION['user_id'];
+$success = '';
+$error = '';
+
+// Handle Cancellation
+if (isset($_GET['cancel_id'])) {
+    $cancel_id = $_GET['cancel_id'];
+    // Verify booking belongs to user and is pending
+    $stmt = $conn->prepare("SELECT booking_status FROM bookings WHERE id = ? AND user_id = ?");
+    $stmt->execute([$cancel_id, $user_id]);
+    $booking = $stmt->fetch();
+
+    if ($booking && $booking['booking_status'] == 'Pending') {
+        $stmt = $conn->prepare("UPDATE bookings SET booking_status = 'Cancelled' WHERE id = ?");
+        if ($stmt->execute([$cancel_id])) {
+            $success = "Booking cancelled successfully.";
+        } else {
+            $error = "Failed to cancel booking.";
+        }
+    } else {
+        $error = "Invalid booking or cannot be cancelled.";
+    }
+}
+
+// Fetch all bookings for the user
+$stmt = $conn->prepare("SELECT b.*, r.title, r.room_number, r.image, p.payment_method FROM bookings b 
+                        JOIN rooms r ON b.room_id = r.id 
+                        LEFT JOIN payments p ON b.id = p.booking_id
+                        WHERE b.user_id = ? ORDER BY b.created_at DESC");
+$stmt->execute([$user_id]);
+$bookings = $stmt->fetchAll();
+?>
+
+<div class="container dashboard-layout">
+    <?php require_once __DIR__ . '/sidebar.php'; ?>
+    
+    <div class="dashboard-content">
+        <h2 style="margin-bottom: 20px;">Booking History</h2>
+        
+        <?php if ($success): ?>
+            <div class="alert alert-success"><?= $success ?></div>
+        <?php endif; ?>
+        <?php if ($error): ?>
+            <div class="alert alert-danger"><?= htmlspecialchars($error) ?></div>
+        <?php endif; ?>
+
+        <?php foreach ($bookings as $booking): ?>
+            <div class="glass-panel" style="padding: 20px; margin-bottom: 20px; display: flex; gap: 20px; align-items: center;">
+                <img src="<?= BASE_URL ?>/uploads/<?= htmlspecialchars($booking['image']) ?>" alt="Room Image" style="width: 150px; height: 100px; object-fit: cover; border-radius: 8px;" onerror="this.src='https://via.placeholder.com/150x100?text=Room'">
+                
+                <div style="flex-grow: 1;">
+                    <h3 style="margin-bottom: 5px;"><?= htmlspecialchars($booking['title']) ?> (<?= htmlspecialchars($booking['room_number']) ?>)</h3>
+                    <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 10px;">
+                        <strong>Check-in:</strong> <?= date('M d, Y', strtotime($booking['check_in'])) ?> | 
+                        <strong>Check-out:</strong> <?= date('M d, Y', strtotime($booking['check_out'])) ?>
+                    </p>
+                    <p style="margin-bottom: 5px;">
+                        <strong>Total Price:</strong> <span style="color: var(--primary-color); font-weight: bold;">Rs. <?= number_format($booking['total_price'], 2) ?></span>
+                    </p>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <?php 
+                            $bStatusClass = 'badge-pending';
+                            if ($booking['booking_status'] == 'Approved') $bStatusClass = 'badge-approved';
+                            if ($booking['booking_status'] == 'Rejected' || $booking['booking_status'] == 'Cancelled') $bStatusClass = 'badge-rejected';
+                            
+                            $pStatusClass = 'badge-pending';
+                            if ($booking['payment_status'] == 'Paid') $pStatusClass = 'badge-approved';
+                            if ($booking['payment_status'] == 'Failed') $pStatusClass = 'badge-rejected';
+                        ?>
+                        <span class="badge <?= $bStatusClass ?>">Booking: <?= $booking['booking_status'] ?></span>
+                        <span class="badge <?= $pStatusClass ?>">Payment: <?= $booking['payment_status'] ?></span>
+                    </div>
+                </div>
+
+                <div style="text-align: right; min-width: 120px;">
+                    <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 15px;">Booked on:<br><?= date('M d, Y', strtotime($booking['created_at'])) ?></p>
+                    <?php if ($booking['booking_status'] == 'Pending'): ?>
+                        <a href="?cancel_id=<?= $booking['id'] ?>" class="btn btn-danger btn-delete" style="padding: 6px 12px; font-size: 0.9rem;">Cancel</a>
+                    <?php endif; ?>
+                    <?php if ($booking['payment_status'] == 'Pending' && $booking['booking_status'] != 'Cancelled' && $booking['booking_status'] != 'Rejected'): ?>
+                        <!-- A placeholder for payment processing in a real app -->
+                        <button class="btn btn-primary" style="padding: 6px 12px; font-size: 0.9rem; margin-top: 5px;" onclick="alert('Payment gateway integration placeholder.')">Pay Now</button>
+                    <?php endif; ?>
+                </div>
+            </div>
+        <?php endforeach; ?>
+
+        <?php if (empty($bookings)): ?>
+            <div class="glass-panel" style="padding: 40px; text-align: center;">
+                <p>You have no bookings yet.</p>
+                <a href="<?= BASE_URL ?>/rooms.php" class="btn btn-primary" style="margin-top: 20px;">Browse Rooms</a>
+            </div>
+        <?php endif; ?>
+
+    </div>
+</div>
+
+<?php require_once __DIR__ . '/../includes/footer.php'; ?>
+
+
+
+=================================================================
+File: C:\xampp\htdocs\hostal room booking web application\user\change-password.php
+=================================================================
+<?php
+require_once __DIR__ . '/../includes/header.php';
+requireUserLogin();
+
+$user = getCurrentUser($conn);
+$success = '';
+$error = '';
+
+if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+    $current_password = $_POST['current_password'];
+    $new_password = $_POST['new_password'];
+    $confirm_password = $_POST['confirm_password'];
+
+    if (empty($current_password) || empty($new_password) || empty($confirm_password)) {
+        $error = 'All fields are required.';
+    } elseif ($new_password !== $confirm_password) {
+        $error = 'New passwords do not match.';
+    } elseif (!password_verify($current_password, $user['password'])) {
+        $error = 'Incorrect current password.';
+    } else {
+        $hashed_password = password_hash($new_password, PASSWORD_DEFAULT);
+        $stmt = $conn->prepare("UPDATE users SET password = ? WHERE id = ?");
+        if ($stmt->execute([$hashed_password, $user['id']])) {
+            $success = 'Password changed successfully.';
+        } else {
+            $error = 'Failed to change password.';
+        }
+    }
+}
+?>
+
+<div class="container dashboard-layout">
+    <?php require_once __DIR__ . '/sidebar.php'; ?>
+    
+    <div class="dashboard-content">
+        <h2 style="margin-bottom: 20px;">Change Password</h2>
+        
+        <div class="glass-panel" style="padding: 30px; max-width: 600px;">
+            <?php if ($success): ?>
+                <div class="alert alert-success"><?= $success ?></div>
+            <?php endif; ?>
+            <?php if ($error): ?>
+                <div class="alert alert-danger"><?= htmlspecialchars($error) ?></div>
+            <?php endif; ?>
+
+            <form method="POST" action="">
+                <div class="form-group">
+                    <label for="current_password">Current Password</label>
+                    <input type="password" id="current_password" name="current_password" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label for="new_password">New Password</label>
+                    <input type="password" id="new_password" name="new_password" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label for="confirm_password">Confirm New Password</label>
+                    <input type="password" id="confirm_password" name="confirm_password" class="form-control" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Change Password</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<?php require_once __DIR__ . '/../includes/footer.php'; ?>
+
+
+
+=================================================================
+File: C:\xampp\htdocs\hostal room booking web application\user\dashboard.php
+=================================================================
+<?php
+require_once __DIR__ . '/../includes/header.php';
+requireUserLogin();
+
+$user_id = $_SESSION['user_id'];
+
+// Get recent bookings
+$stmt = $conn->prepare("SELECT b.*, r.title, r.room_number FROM bookings b JOIN rooms r ON b.room_id = r.id WHERE b.user_id = ? ORDER BY b.created_at DESC LIMIT 5");
+$stmt->execute([$user_id]);
+$recent_bookings = $stmt->fetchAll();
+
+// Get counts
+$stmt = $conn->prepare("SELECT count(*) as total FROM bookings WHERE user_id = ?");
+$stmt->execute([$user_id]);
+$total_bookings = $stmt->fetch()['total'];
+
+$stmt = $conn->prepare("SELECT count(*) as active FROM bookings WHERE user_id = ? AND booking_status IN ('Pending', 'Approved') AND check_out >= CURDATE()");
+$stmt->execute([$user_id]);
+$active_bookings = $stmt->fetch()['active'];
+
+$user = getCurrentUser($conn);
+?>
+
+<div class="container dashboard-layout">
+    <?php require_once __DIR__ . '/sidebar.php'; ?>
+    
+    <div class="dashboard-content">
+        <h2 style="margin-bottom: 20px;">Welcome back, <?= htmlspecialchars($user['name']) ?>!</h2>
+        
+        <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 30px;">
+            <div class="glass-panel" style="padding: 20px; text-align: center; border-left: 4px solid var(--primary-color);">
+                <h3 style="color: var(--text-muted); font-size: 1rem; margin-bottom: 10px;">Total Bookings</h3>
+                <p style="font-size: 2rem; font-weight: bold; color: var(--text-main);"><?= $total_bookings ?></p>
+            </div>
+            <div class="glass-panel" style="padding: 20px; text-align: center; border-left: 4px solid var(--success);">
+                <h3 style="color: var(--text-muted); font-size: 1rem; margin-bottom: 10px;">Active Stays</h3>
+                <p style="font-size: 2rem; font-weight: bold; color: var(--text-main);"><?= $active_bookings ?></p>
+            </div>
+        </div>
+
+        <div class="glass-panel" style="padding: 20px;">
+            <h3 style="margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px solid var(--glass-border);">Recent Bookings</h3>
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Room</th>
+                            <th>Check-in</th>
+                            <th>Check-out</th>
+                            <th>Status</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($recent_bookings as $booking): ?>
+                            <tr>
+                                <td><?= htmlspecialchars($booking['title']) ?> (<?= htmlspecialchars($booking['room_number']) ?>)</td>
+                                <td><?= date('M d, Y', strtotime($booking['check_in'])) ?></td>
+                                <td><?= date('M d, Y', strtotime($booking['check_out'])) ?></td>
+                                <td>
+                                    <?php 
+                                        $statusClass = 'badge-pending';
+                                        if ($booking['booking_status'] == 'Approved') $statusClass = 'badge-approved';
+                                        if ($booking['booking_status'] == 'Rejected' || $booking['booking_status'] == 'Cancelled') $statusClass = 'badge-rejected';
+                                    ?>
+                                    <span class="badge <?= $statusClass ?>"><?= $booking['booking_status'] ?></span>
+                                </td>
+                                <td>
+                                    <a href="<?= BASE_URL ?>/user/booking-history.php" class="btn btn-secondary" style="padding: 5px 20px; font-size: 0.8rem;">View Details</a>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                        <?php if (empty($recent_bookings)): ?>
+                            <tr>
+                                <td colspan="5" style="text-align: center;">No bookings found. <a href="<?= BASE_URL ?>/rooms.php">Book a room now</a>.</td>
+                            </tr>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<?php require_once __DIR__ . '/../includes/footer.php'; ?>
+
+
+
+=================================================================
+File: C:\xampp\htdocs\hostal room booking web application\user\profile.php
+=================================================================
+<?php
+require_once __DIR__ . '/../includes/header.php';
+requireUserLogin();
+
+$user = getCurrentUser($conn);
+$success = '';
+$error = '';
+
+if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+    $name = trim($_POST['name']);
+    $phone = trim($_POST['phone']);
+
+    if (empty($name) || empty($phone)) {
+        $error = 'Name and Phone are required.';
+    } else {
+        $stmt = $conn->prepare("UPDATE users SET name = ?, phone = ? WHERE id = ?");
+        if ($stmt->execute([$name, $phone, $user['id']])) {
+            $success = 'Profile updated successfully.';
+            $user['name'] = $name;
+            $user['phone'] = $phone;
+            $_SESSION['user_name'] = $name;
+        } else {
+            $error = 'Failed to update profile.';
+        }
+    }
+}
+?>
+
+<div class="container dashboard-layout">
+    <?php require_once __DIR__ . '/sidebar.php'; ?>
+    
+    <div class="dashboard-content">
+        <h2 style="margin-bottom: 20px;">My Profile</h2>
+        
+        <div class="glass-panel" style="padding: 30px; max-width: 600px;">
+            <?php if ($success): ?>
+                <div class="alert alert-success"><?= $success ?></div>
+            <?php endif; ?>
+            <?php if ($error): ?>
+                <div class="alert alert-danger"><?= htmlspecialchars($error) ?></div>
+            <?php endif; ?>
+
+            <form method="POST" action="">
+                <div class="form-group">
+                    <label for="email">Email Address (Cannot be changed)</label>
+                    <input type="email" id="email" class="form-control" value="<?= htmlspecialchars($user['email']) ?>" disabled style="background: #E5E7EB;">
+                </div>
+                <div class="form-group">
+                    <label for="name">Full Name</label>
+                    <input type="text" id="name" name="name" class="form-control" value="<?= htmlspecialchars($user['name']) ?>" required>
+                </div>
+                <div class="form-group">
+                    <label for="phone">Phone Number</label>
+                    <input type="text" id="phone" name="phone" class="form-control" value="<?= htmlspecialchars($user['phone']) ?>" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Update Profile</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<?php require_once __DIR__ . '/../includes/footer.php'; ?>
+
+
+
+=================================================================
+File: C:\xampp\htdocs\hostal room booking web application\user\sidebar.php
+=================================================================
+<?php
+$current_page = basename($_SERVER['PHP_SELF']);
+?>
+<div class="sidebar glass-panel" style="padding: 20px;">
+    <h3 style="margin-bottom: 20px; color: var(--primary-color); border-bottom: 1px solid var(--glass-border); padding-bottom: 10px;">User Menu</h3>
+    <ul>
+        <li><a href="<?= BASE_URL ?>/user/dashboard.php" class="<?= $current_page == 'dashboard.php' ? 'active' : '' ?>"><i class="fas fa-home" style="margin-right: 10px;"></i> Dashboard</a></li>
+        <li><a href="<?= BASE_URL ?>/user/profile.php" class="<?= $current_page == 'profile.php' ? 'active' : '' ?>"><i class="fas fa-user" style="margin-right: 10px;"></i> My Profile</a></li>
+        <li><a href="<?= BASE_URL ?>/user/booking-history.php" class="<?= $current_page == 'booking-history.php' ? 'active' : '' ?>"><i class="fas fa-list-alt" style="margin-right: 10px;"></i> Booking History</a></li>
+        <li><a href="<?= BASE_URL ?>/user/change-password.php" class="<?= $current_page == 'change-password.php' ? 'active' : '' ?>"><i class="fas fa-key" style="margin-right: 10px;"></i> Change Password</a></li>
+        <li><a href="<?= BASE_URL ?>/logout.php" style="color: var(--danger);"><i class="fas fa-sign-out-alt" style="margin-right: 10px;"></i> Logout</a></li>
+    </ul>
+</div>
+
+
+
